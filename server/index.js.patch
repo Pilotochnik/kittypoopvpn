@@ -1,0 +1,57 @@
+// Заменить существующий код checkAndUpdateVpnKeysStatus в index.js
+// Импортировать менеджер ключей
+const keyManager = require('./utils/keyManager');
+
+// Запуск сервера
+async function startServer() {
+  // Подключаемся к базе данных
+  const connected = await connectDB();
+  
+  if (!connected) {
+    console.error('Не удалось подключиться к базе данных. Выход...');
+    process.exit(1);
+  }
+  
+  // Запускаем проверку статуса ключей с использованием улучшенного менеджера ключей
+  await keyManager.startKeyStatusChecker();
+  
+  // Запускаем сервер
+  app.listen(PORT, () => {
+    console.log(`Сервер запущен на порту ${PORT}`);
+  });
+}
+
+// Добавить новый API эндпоинт для проверки статуса ключей
+app.get('/api/admin/keys/status', async (req, res) => {
+  try {
+    const stats = await keyManager.getKeysStatistics();
+    res.json({
+      success: true,
+      data: stats
+    });
+  } catch (error) {
+    console.error('Ошибка при получении статистики ключей:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка при получении статистики ключей'
+    });
+  }
+});
+
+// Добавить новый API эндпоинт для ручного запуска очистки старых тестовых ключей
+app.post('/api/admin/keys/cleanup', async (req, res) => {
+  try {
+    const daysAgo = req.body.daysAgo || 7;
+    const result = await keyManager.cleanupOldTrialKeys(daysAgo);
+    res.json({
+      success: true,
+      deleted: result.deleted
+    });
+  } catch (error) {
+    console.error('Ошибка при очистке старых ключей:', error);
+    res.status(500).json({
+      success: false,
+      error: 'Ошибка при очистке старых ключей'
+    });
+  }
+}); 
