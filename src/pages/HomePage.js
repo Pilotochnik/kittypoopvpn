@@ -7,6 +7,9 @@ import TrialKeyGenerator from '../components/TrialKeyGenerator';
 const PageContainer = styled.div`
   min-height: 100vh;
   padding-top: 80px;
+  @media (max-width: 600px) {
+    padding-top: 48px;
+  }
 `;
 
 const HeroSection = styled.section`
@@ -15,10 +18,24 @@ const HeroSection = styled.section`
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 100px 20px 50px;
-  background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f14 80%); /* Фон РАСкомментирован */
+  padding: 30px 20px 50px;
+  background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f14 80%);
   position: relative;
   overflow: hidden;
+  @media (max-width: 600px) {
+    padding: 18px 4px 24px;
+  }
+
+  & > .floating-emoji {
+    z-index: 10;
+    position: absolute;
+    pointer-events: none;
+  }
+
+  & > *:not(.floating-emoji) {
+    position: relative;
+    z-index: 2;
+  }
 
   &::before {
     content: '';
@@ -50,9 +67,12 @@ const HeroTitle = styled(motion.h1)`
   -webkit-text-fill-color: transparent;
   position: relative;
   z-index: 1;
-
   @media (max-width: 768px) {
     font-size: 3rem;
+  }
+  @media (max-width: 600px) {
+    font-size: 2.1rem;
+    margin-bottom: 10px;
   }
 `;
 
@@ -63,9 +83,12 @@ const HeroSubtitle = styled(motion.p)`
   margin-bottom: 40px;
   position: relative;
   z-index: 1;
-
   @media (max-width: 768px) {
     font-size: 1.2rem;
+  }
+  @media (max-width: 600px) {
+    font-size: 1rem;
+    margin-bottom: 18px;
   }
 `;
 
@@ -74,10 +97,12 @@ const ButtonGroup = styled(motion.div)`
   gap: 20px;
   position: relative;
   z-index: 1;
-
   @media (max-width: 768px) {
     flex-direction: column;
     gap: 10px;
+  }
+  @media (max-width: 600px) {
+    gap: 6px;
   }
 `;
 
@@ -92,10 +117,14 @@ const PrimaryButton = styled(Link)`
   cursor: pointer;
   transition: all 0.3s ease;
   text-decoration: none;
-  
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 10px 20px rgba(140, 82, 255, 0.3);
+  }
+  @media (max-width: 600px) {
+    font-size: 1rem;
+    padding: 12px 10px;
+    width: 100%;
   }
 `;
 
@@ -110,10 +139,14 @@ const SecondaryButton = styled(Link)`
   cursor: pointer;
   transition: all 0.3s ease;
   text-decoration: none;
-  
   &:hover {
     background-color: rgba(255, 102, 196, 0.1);
     transform: translateY(-2px);
+  }
+  @media (max-width: 600px) {
+    font-size: 1rem;
+    padding: 12px 10px;
+    width: 100%;
   }
 `;
 
@@ -128,6 +161,9 @@ const SectionContainer = styled.div`
   max-width: 1200px;
   margin: 0 auto;
   padding: 80px 20px;
+  @media (max-width: 600px) {
+    padding: 24px 4px;
+  }
 `;
 
 const SectionTitle = styled.h2`
@@ -137,6 +173,10 @@ const SectionTitle = styled.h2`
   background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  @media (max-width: 600px) {
+    font-size: 1.3rem;
+    margin-bottom: 18px;
+  }
 `;
 
 const FeaturesGrid = styled.div`
@@ -144,6 +184,11 @@ const FeaturesGrid = styled.div`
   grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
   gap: 30px;
   margin-top: 60px;
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+    gap: 12px;
+    margin-top: 18px;
+  }
 `;
 
 const FeatureCard = styled(motion.div)`
@@ -153,11 +198,14 @@ const FeatureCard = styled(motion.div)`
   box-shadow: 0 15px 30px rgba(0, 0, 0, 0.2);
   transition: all 0.3s ease;
   border: 1px solid rgba(255, 255, 255, 0.05);
-  
   &:hover {
     transform: translateY(-5px);
     box-shadow: 0 20px 40px rgba(0, 0, 0, 0.3);
     border-color: rgba(255, 102, 196, 0.3);
+  }
+  @media (max-width: 600px) {
+    padding: 12px 8px;
+    border-radius: 8px;
   }
 `;
 
@@ -200,7 +248,7 @@ const HomePage = () => {
   return (
     <PageContainer>
       <HeroSection>
-        <FloatingElement
+        <FloatingElement className="floating-emoji"
           initial={{ x: -100, y: -50 }}
           animate={{ 
             x: [-100, 100, -100],
@@ -215,8 +263,7 @@ const HomePage = () => {
         >
           🔒
         </FloatingElement>
-        
-        <FloatingElement
+        <FloatingElement className="floating-emoji"
           initial={{ x: 100, y: 100 }}
           animate={{ 
             x: [100, -100, 100],
@@ -231,8 +278,7 @@ const HomePage = () => {
         >
           🌐
         </FloatingElement>
-        
-        <FloatingElement
+        <FloatingElement className="floating-emoji"
           initial={{ x: 0, y: 0 }}
           animate={{ 
             x: [0, 50, -50, 0],
@@ -263,6 +309,8 @@ const HomePage = () => {
         >
           Безопасный и быстрый VPN-сервис для анонимного серфинга в интернете
         </HeroSubtitle>
+        
+        <TrialKeyGenerator />
         
         <ButtonGroup
           initial={{ opacity: 0, y: -20 }}

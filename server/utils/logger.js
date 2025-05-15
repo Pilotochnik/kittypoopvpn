@@ -67,7 +67,7 @@ const logger = {
       } : null,
       ...data
     };
-    console.error(JSON.stringify(logEntry));
+    console.error(safeStringifyLogEntry(logEntry));
   },
   
   warning: (message, data = {}) => {
@@ -92,6 +92,13 @@ const logger = {
     }
   }
 };
+
+function safeStringifyLogEntry(logEntry) {
+  const safeLogEntry = { ...logEntry };
+  delete safeLogEntry.req;
+  delete safeLogEntry.res;
+  return JSON.stringify(safeLogEntry);
+}
 
 module.exports = {
   winstonLogger,

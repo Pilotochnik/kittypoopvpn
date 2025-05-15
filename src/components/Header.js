@@ -42,12 +42,27 @@ const NavLink = styled(Link)`
 `;
 
 const LoginButton = styled(Link)`
-  padding: 8px 16px;
-  background-color: #ff66c4;
-  color: white;
-  border-radius: 4px;
+  padding: 10px 22px;
+  background: linear-gradient(90deg, #229ED9 0%, #60cfff 100%);
+  color: #fff;
+  border-radius: 8px;
   text-decoration: none;
   font-weight: bold;
+  font-size: 1.08rem;
+  box-shadow: 0 2px 12px 0 rgba(34, 158, 217, 0.13);
+  letter-spacing: 0.5px;
+  transition: all 0.18s;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  border: none;
+  &:hover {
+    background: linear-gradient(90deg, #60cfff 0%, #229ED9 100%);
+    box-shadow: 0 4px 18px 0 rgba(34, 158, 217, 0.18);
+    transform: translateY(-2px) scale(1.04);
+    color: #fff;
+    text-decoration: none;
+  }
 `;
 
 const Header = ({ toggleSidebar = () => {} }) => {
@@ -110,7 +125,7 @@ const Header = ({ toggleSidebar = () => {} }) => {
             >
               FAQ по настройке
             </NavLink>
-            <LoginButton to="/login">Войти</LoginButton>
+            <LoginButton to="/login">Авторизоваться через Telegram</LoginButton>
           </>
         )}
       </Navigation>

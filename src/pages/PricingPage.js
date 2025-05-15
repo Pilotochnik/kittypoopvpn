@@ -7,12 +7,19 @@ const PageContainer = styled.div`
   min-height: 100vh;
   padding-top: 100px;
   padding-bottom: 50px;
+  @media (max-width: 600px) {
+    padding-top: 56px;
+    padding-bottom: 18px;
+  }
 `;
 
 const Content = styled.div`
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
+  @media (max-width: 600px) {
+    padding: 0 4px;
+  }
 `;
 
 const HeaderSection = styled.div`
@@ -40,9 +47,10 @@ const PricingGrid = styled.div`
   grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
   gap: 30px;
   margin-bottom: 60px;
-  
-  @media (max-width: 768px) {
+  @media (max-width: 600px) {
     grid-template-columns: 1fr;
+    gap: 12px;
+    margin-bottom: 18px;
   }
 `;
 
@@ -56,6 +64,10 @@ const PricingCard = styled(motion.div)`
   border: ${props => props.popular ? '2px solid var(--primary-color)' : '1px solid rgba(255, 255, 255, 0.05)'};
   position: relative;
   overflow: hidden;
+  @media (max-width: 600px) {
+    padding: 16px 8px;
+    border-radius: 10px;
+  }
   
   &::before {
     content: '';
@@ -97,6 +109,10 @@ const PlanName = styled.h3`
   font-size: 1.5rem;
   margin-bottom: 15px;
   color: var(--text-color);
+  @media (max-width: 600px) {
+    font-size: 1.1rem;
+    margin-bottom: 8px;
+  }
 `;
 
 const Price = styled.div`
@@ -113,6 +129,11 @@ const Price = styled.div`
     color: var(--text-secondary);
     align-self: flex-end;
     margin-bottom: 10px;
+  }
+  @media (max-width: 600px) {
+    font-size: 2rem;
+    margin-bottom: 4px;
+    span { font-size: 0.8rem; }
   }
 `;
 
@@ -171,10 +192,18 @@ const Button = styled(motion.button)`
     box-shadow: ${props => props.popular ? '0 10px 20px rgba(140, 82, 255, 0.3)' : '0 10px 20px rgba(51, 204, 255, 0.15)'};
     background: ${props => props.popular ? 'linear-gradient(90deg, var(--primary-color), var(--secondary-color))' : 'rgba(51, 204, 255, 0.1)'};
   }
+  @media (max-width: 600px) {
+    font-size: 0.95rem;
+    padding: 10px 0;
+    border-radius: 7px;
+  }
 `;
 
 const FAQ = styled.div`
   margin-top: 80px;
+  @media (max-width: 600px) {
+    margin-top: 24px;
+  }
 `;
 
 const FAQTitle = styled.h2`
@@ -184,6 +213,10 @@ const FAQTitle = styled.h2`
   background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  @media (max-width: 600px) {
+    font-size: 1.3rem;
+    margin-bottom: 18px;
+  }
 `;
 
 const FAQItem = styled(motion.div)`
@@ -192,6 +225,10 @@ const FAQItem = styled(motion.div)`
   border-radius: 12px;
   overflow: hidden;
   border: 1px solid rgba(255, 255, 255, 0.05);
+  @media (max-width: 600px) {
+    margin-bottom: 10px;
+    border-radius: 7px;
+  }
 `;
 
 const FAQQuestion = styled.div`

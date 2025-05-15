@@ -1,14 +1,13 @@
 const express = require('express');
 const crypto = require('crypto');
-const blockchainService = require('../blockchainService');
 const PaymentService = require('../models/Payment');
 const User = require('../models/User');
 const VpnKey = require('../models/VpnKey');
 const TelegramBot = require('node-telegram-bot-api');
 const axios = require('axios');
 const { sendAdminNotification } = require('../bot');
-const { startPaymentVerification } = require('../services/paymentVerification');
 const { logger } = require('../utils/logger');
+const cryptopayService = require('../utils/cryptopayService'); // Новый сервис для CryptoPay
 require('dotenv').config();
 
 const router = express.Router();
@@ -32,83 +31,15 @@ const generatePaymentId = () => {
   return 'pay_' + crypto.randomBytes(10).toString('hex');
 };
 
-// Получение реального курса валют через CoinGecko
-async function getCryptoRate(currency) {
-  try {
-    // Проверяем кеш
-    const cached = rateCache.get(currency);
-    if (cached && (Date.now() - cached.timestamp) < RATE_CACHE_TTL) {
-      return cached.rate;
-    }
-
-    const ids = {
-      eth: 'ethereum',
-      ton: 'the-open-network',
-      usdt_erc20: 'tether',
-      usdt_trc20: 'tether',
-      usdt: 'tether',
-      usdt_eth: 'tether'
-    };
-
-    const id = ids[currency];
-    if (!id) {
-      // Для manual_tinkoff возвращаем фиксированный курс 1:1
-      if (currency === 'manual_tinkoff') {
-        return { usd: 1, rub: 1 };
-      }
-      return null;
-    }
-
-    // Получаем курсы в USD и RUB
-    const res = await axios.get(
-      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd,rub`
-    );
-
-    if (!res.data[id]) {
-      throw new Error('Не удалось получить курс');
-    }
-
-    const rate = {
-      usd: res.data[id].usd,
-      rub: res.data[id].rub
-    };
-
-    // Сохраняем в кеш
-    rateCache.set(currency, {
-      rate,
-      timestamp: Date.now()
-    });
-
-    return rate;
-  } catch (e) {
-    console.error('Ошибка получения курса CoinGecko:', e);
-    
-    // Фолбэк на дефолтные значения
-    const defaultRates = {
-      eth: { usd: 3000, rub: 270000 },
-      ton: { usd: 5, rub: 450 },
-      usdt: { usd: 1, rub: 90 },
-      usdt_erc20: { usd: 1, rub: 90 },
-      usdt_trc20: { usd: 1, rub: 90 },
-      usdt_eth: { usd: 1, rub: 90 },
-      manual_tinkoff: { usd: 1, rub: 1 }
-    };
-
-    return defaultRates[currency] || null;
-  }
-}
-
 // API для создания крипто-платежа (анонимно или с userId)
 router.post('/create', async (req, res) => {
   try {
     const { amount, currency, plan, period, userId } = req.body;
     logger.info('Получен запрос на создание платежа', { userId, plan, period, currency });
-    // Валидация входных данных
     if (!currency || !plan || !period || !userId) {
       logger.warning('Неполные данные платежа', { received: { amount, currency, plan, period, userId } });
       return res.status(400).json({ success: false, message: 'Не указаны все необходимые параметры' });
     }
-    // --- Убираем проверку существования пользователя для анонимных ---
     let user = null;
     if (userId !== 'anonymous-user') {
       user = await User.findById(userId);
@@ -117,101 +48,81 @@ router.post('/create', async (req, res) => {
         return res.status(404).json({ success: false, message: 'Пользователь не найден' });
       }
     }
-    
-    // Рассчитываем базовую сумму в рублях
     let rubAmount;
     switch(plan) {
-      case 'basic':
-        rubAmount = 200; // Пробный месяц
-        break;
-      case 'standard':
-        rubAmount = 500; // Базовичок
-        break;
-      case 'premium':
-        rubAmount = 1500; // Наш котяра
-        break;
-      default:
-        rubAmount = 500;
+      case 'basic': rubAmount = 200; break;
+      case 'standard': rubAmount = 500; break;
+      case 'premium': rubAmount = 1500; break;
+      default: rubAmount = 500;
     }
-
-    // Получаем актуальный курс валюты
-    const rates = await getCryptoRate(currency);
-    if (!rates) {
-      return res.status(400).json({
-        success: false,
-        message: 'Не удалось получить курс валюты'
-      });
+    // --- CryptoPay ---
+    if (currency !== 'manual_tinkoff') {
+      try {
+        // Создаём инвойс через CryptoPay
+        const invoice = await cryptopayService.createInvoice({
+          amount: rubAmount,
+          currency,
+          plan,
+          period,
+          userId
+        });
+        // Сохраняем платёж в базе
+        const paymentId = generatePaymentId();
+        const expiryTime = new Date(Date.now() + 30 * 60 * 1000);
+        const periodInDays = period === 'monthly' ? 30 : period === 'quarterly' ? 90 : period === 'yearly' ? 365 : 30;
+        const payment = await PaymentService.create({
+          paymentId,
+          userId: user ? user.id : userId,
+          status: 'pending',
+          amount: rubAmount,
+          currency,
+          plan,
+          period: periodInDays,
+          expiryTime,
+          cryptopayInvoiceId: invoice.invoice_id,
+          cryptopayPayUrl: invoice.pay_url
+        });
+        logger.info('Создан новый платёж через CryptoPay', { paymentId, invoice });
+        return res.json({
+          success: true,
+          payment: {
+            paymentId,
+            amount: rubAmount,
+            currency,
+            plan,
+            period,
+            status: 'pending',
+            expiryTime,
+            cryptopayInvoiceId: invoice.invoice_id,
+            cryptopayPayUrl: invoice.pay_url
+          }
+        });
+      } catch (err) {
+        logger.error('Ошибка при создании инвойса через CryptoPay', err.message);
+        return res.status(400).json({ success: false, message: err.message || 'Ошибка при создании платежа через CryptoPay' });
+      }
     }
-
-    // Конвертируем сумму в криптовалюту
-    const cryptoAmount = parseFloat((rubAmount / rates.rub).toFixed(8));
-    
-    // Генерируем ID платежа
-    const paymentId = `pay_${crypto.randomBytes(10).toString('hex')}`;
-    
-    // Устанавливаем срок действия платежа (30 минут)
+    // --- Ручная оплата картой ---
+    const paymentId = generatePaymentId();
     const expiryTime = new Date(Date.now() + 30 * 60 * 1000);
-
-    // Конвертация периода в дни
-    let periodInDays;
-    switch (period) {
-      case 'monthly':
-        periodInDays = 30;
-        break;
-      case 'quarterly':
-        periodInDays = 90;
-        break;
-      case 'yearly':
-        periodInDays = 365;
-        break;
-      default:
-        periodInDays = 30;
-    }
-
-    // Генерируем адрес для оплаты
-    const cryptoAddress = blockchainService.generatePaymentAddress(currency);
-    
-    // Создаем запись о платеже в базе данных
+    const periodInDays = period === 'monthly' ? 30 : period === 'quarterly' ? 90 : period === 'yearly' ? 365 : 30;
     const payment = await PaymentService.create({
       paymentId,
       userId: user ? user.id : userId,
       status: 'pending',
       amount: rubAmount,
       currency,
-      cryptoAmount,
-      cryptoAddress,
       plan,
       period: periodInDays,
       expiryTime
     });
-    
-    logger.info('Создан новый платеж', { 
-      paymentId, 
-      userId: user ? user.id : userId, 
-      amount: rubAmount,
-      cryptoAmount,
-      currency,
-      plan, 
-      period 
-    });
-    
-    // Запускаем проверку платежа
-    try {
-      startPaymentVerification(paymentId);
-      logger.info('Запущена проверка платежа', { paymentId });
-    } catch (verifyError) {
-      logger.error('Ошибка при запуске проверки платежа', verifyError, { paymentId });
-    }
-    
-    // Отправляем в ответ все необходимые данные
+    logger.info('Создан новый платёж (ручная карта)', { paymentId });
     return res.json({
       success: true,
       payment: {
         paymentId,
         amount: rubAmount,
         currency,
-        cryptoAmount,
-        cryptoAddress,
         plan,
         period,
         status: 'pending',
@@ -219,10 +130,7 @@ router.post('/create', async (req, res) => {
       }
     });
   } catch (error) {
-    logger.error('Необработанная ошибка при создании крипто-платежа', error, { 
-      body: req.body 
-    });
-    
+    logger.error('Необработанная ошибка при создании платежа', error, { body: req.body });
     return res.status(500).json({
       success: false,
       message: 'Внутренняя ошибка сервера при создании платежа'
@@ -245,39 +153,19 @@ router.get('/status/:paymentId', async (req, res) => {
 
     // Если платеж завершен, получаем информацию о VPN ключе
     let vpnKey = null;
-    if (payment.status === 'completed') {
-      logger.info('Получен запрос статуса для завершенного платежа', {
-        paymentId,
-        hasVpnKeyUuid: !!payment.vpnKeyUuid,
-        hasVpnKeyConfig: !!payment.vpnKeyConfig,
-        configType: typeof payment.vpnKeyConfig
-      });
-      
-      // Проверяем и форматируем конфигурацию
-      let config = payment.vpnKeyConfig;
+    if (payment.status === 'completed' && payment.vpnKeyUuid) {
+      // Гарантированно получаем ключ из базы, чтобы config всегда был
+      const keyFromDb = await VpnKey.findByUuid(payment.vpnKeyUuid);
+      let config = keyFromDb?.config || payment.vpnKeyConfig;
       if (typeof config === 'object') {
         config = JSON.stringify(config);
       }
-      
-      // Форматируем объект с данными ключа
       vpnKey = {
         uuid: payment.vpnKeyUuid,
         config: config,
         createdAt: payment.completedAt,
         expiresAt: payment.vpnKeyExpires
       };
-      
-      logger.info('Отправляю ответ с VPN ключом', {
-        paymentId,
-        vpnKeyDetails: {
-          hasUuid: !!vpnKey.uuid,
-          hasConfig: !!vpnKey.config,
-          configType: typeof vpnKey.config,
-          configPreview: vpnKey.config ? vpnKey.config.substring(0, 50) + '...' : null
-        },
-        fullPayment: JSON.stringify(payment, null, 2),
-        fullVpnKey: JSON.stringify(vpnKey, null, 2)
-      });
     }
 
     const response = {
@@ -579,6 +467,40 @@ router.get('/history/:userId', async (req, res) => {
       success: false,
       message: 'Внутренняя ошибка сервера при получении истории платежей'
     });
+  }
+});
+
+// Webhook для CryptoPay
+router.post('/cryptopay/webhook', async (req, res) => {
+  try {
+    const { invoice_id, status } = req.body;
+    if (!invoice_id || !status) {
+      return res.status(400).json({ success: false, message: 'Нет invoice_id или status' });
+    }
+    // Ищем платёж по invoice_id
+    const payment = await PaymentService.findOne({ cryptopayInvoiceId: invoice_id });
+    if (!payment) {
+      return res.status(404).json({ success: false, message: 'Платёж не найден' });
+    }
+    if (status === 'paid' && payment.status !== 'completed') {
+      // Генерируем VPN-ключ
+      const vpnKeyData = await generateVpnKey(payment.plan, payment.period, payment.userId);
+      // Обновляем платёж
+      await PaymentService.update(payment.paymentId, {
+        status: 'completed',
+        vpnKeyUuid: vpnKeyData.uuid,
+        vpnKeyConfig: vpnKeyData.config,
+        vpnKeyExpires: vpnKeyData.expires,
+        completedAt: new Date()
+      });
+      // Отправляем ключ пользователю
+      await sendVpnKeyToUser(payment, vpnKeyData);
+      return res.json({ success: true, message: 'Платёж подтверждён и ключ выдан' });
+    }
+    return res.json({ success: true, message: 'Webhook обработан' });
+  } catch (error) {
+    logger.error('Ошибка в webhook CryptoPay', error);
+    return res.status(500).json({ success: false, message: 'Ошибка сервера' });
   }
 });
 

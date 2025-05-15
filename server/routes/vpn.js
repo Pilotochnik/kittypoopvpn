@@ -171,7 +171,8 @@ router.get('/keys/:userId', async (req, res) => {
     }
     
     // Получаем все ключи пользователя
-    const vpnKeys = await VpnKey.find({ userId }).sort({ created: -1 });
+    const vpnKeys = await VpnKey.find({ userId });
+    vpnKeys.sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
     
     // Обновляем статус у истекших ключей
     const now = new Date();
@@ -187,8 +188,8 @@ router.get('/keys/:userId', async (req, res) => {
       uuid: key.uuid,
       plan: key.plan,
       period: key.period,
-      created: key.created,
-      expires: key.expires,
+      created: key.createdAt,
+      expires: key.expiresAt,
       isActive: key.isActive,
       isTrial: key.isTrial,
       config: key.config

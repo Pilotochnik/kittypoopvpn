@@ -20,24 +20,19 @@ const PORT = process.env.PORT || 5000;
 // Middleware
 app.use(cors({
   origin: function (origin, callback) {
-    // Разрешаем запросы с localhost:3000 и localhost:3001 (React dev server)
-    const allowedOrigins = [
-      'http://localhost:3000',
-      'http://localhost:3001',
-      'http://127.0.0.1:3000',
-      'http://127.0.0.1:3001',
-    ];
-    // Также разрешаем из переменной окружения, если она задана
-    if (process.env.FRONTEND_URL) {
-      allowedOrigins.push(process.env.FRONTEND_URL);
-    }
-    // Если origin не передан (например, curl или Postman) — разрешаем
+    // Разрешаем любые локальные адреса для разработки
     if (!origin) return callback(null, true);
-    if (allowedOrigins.includes(origin)) {
+    if (
+      origin.startsWith('http://localhost:') ||
+      origin.startsWith('http://127.0.0.1:')
+    ) {
       return callback(null, true);
-    } else {
-      return callback(new Error('Not allowed by CORS: ' + origin));
     }
+    // Также разрешаем из переменной окружения, если она задана
+    if (process.env.FRONTEND_URL && origin === process.env.FRONTEND_URL) {
+      return callback(null, true);
+    }
+    return callback(new Error('Not allowed by CORS: ' + origin));
   },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],

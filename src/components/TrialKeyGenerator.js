@@ -165,6 +165,11 @@ const ErrorMessage = styled.div`
     margin-right: 10px;
     font-size: 16px;
   }
+  @media (max-width: 600px) {
+    font-size: 12px;
+    padding: 8px 6px;
+    margin-top: 10px;
+  }
 `;
 
 const LoadingOverlay = styled.div`
@@ -179,6 +184,9 @@ const LoadingOverlay = styled.div`
   align-items: center;
   z-index: 10;
   border-radius: 16px;
+  @media (max-width: 600px) {
+    border-radius: 8px;
+  }
 `;
 
 const LoadingSpinner = styled.div`
@@ -191,6 +199,10 @@ const LoadingSpinner = styled.div`
   
   @keyframes spin {
     to { transform: rotate(360deg); }
+  }
+  @media (max-width: 600px) {
+    width: 28px;
+    height: 28px;
   }
 `;
 
@@ -211,6 +223,12 @@ const FaqButton = styled(Link)`
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(140, 82, 255, 0.3);
   }
+  @media (max-width: 600px) {
+    font-size: 14px;
+    padding: 10px 6px;
+    margin-top: 10px;
+    width: 100%;
+  }
 `;
 
 const InfoBlock = styled.div`
@@ -219,6 +237,11 @@ const InfoBlock = styled.div`
   padding: 15px;
   margin: 20px 0;
   border-radius: 4px;
+  @media (max-width: 600px) {
+    padding: 8px 4px;
+    margin: 10px 0;
+    border-radius: 3px;
+  }
 `;
 
 const TrialKeyGenerator = () => {

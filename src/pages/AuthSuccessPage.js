@@ -5,28 +5,26 @@ import { motion } from 'framer-motion';
 import { useAuth } from '../context/AuthContext';
 
 const Container = styled.div`
+  min-height: 100vh;
   display: flex;
-  flex-direction: column;
   align-items: center;
   justify-content: center;
-  min-height: 100vh;
-  padding: 20px;
-  text-align: center;
-  background: var(--background);
+  background: none;
+  position: relative;
 `;
 
 const Card = styled(motion.div)`
   background-color: var(--card-background);
-  border-radius: 12px;
-  padding: 30px;
-  max-width: 500px;
+  border-radius: 16px;
+  padding: 50px;
+  max-width: 600px;
   width: 100%;
   box-shadow: 0 10px 30px rgba(0, 0, 0, 0.15);
   border: 1px solid rgba(255, 255, 255, 0.05);
 `;
 
 const Title = styled.h1`
-  font-size: 2rem;
+  font-size: 2.5rem;
   margin-bottom: 15px;
   background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
   -webkit-background-clip: text;
@@ -60,6 +58,13 @@ const ErrorMessage = styled.div`
   border-radius: 8px;
   margin: 20px 0;
   font-size: 0.95rem;
+`;
+
+const AnimatedEmoji = styled(motion.div)`
+  position: absolute;
+  font-size: 3.5rem;
+  z-index: 10;
+  pointer-events: none;
 `;
 
 const AuthSuccessPage = () => {
@@ -132,13 +137,63 @@ const AuthSuccessPage = () => {
   
   return (
     <Container>
+      {/* Анимированные emoji вокруг блока */}
+      <AnimatedEmoji
+        initial={{ x: -120, y: -60, rotate: -20 }}
+        animate={{ x: 0, y: 0, rotate: 0 }}
+        transition={{ duration: 1.2, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        style={{ top: 30, left: 30 }}
+      >😺</AnimatedEmoji>
+      <AnimatedEmoji
+        initial={{ x: 120, y: -40, rotate: 20 }}
+        animate={{ x: 0, y: 0, rotate: 0 }}
+        transition={{ duration: 1.5, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        style={{ top: 40, right: 40 }}
+      >💩</AnimatedEmoji>
+      <AnimatedEmoji
+        initial={{ y: 80, scale: 1 }}
+        animate={{ y: 100, scale: 1.2 }}
+        transition={{ duration: 1.7, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        style={{ bottom: 60, left: 80 }}
+      >🔒</AnimatedEmoji>
+      <AnimatedEmoji
+        initial={{ y: 120, scale: 1 }}
+        animate={{ y: 80, scale: 1.1 }}
+        transition={{ duration: 2, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        style={{ bottom: 40, right: 100 }}
+      >🐾</AnimatedEmoji>
+      {/* Дополнительные emoji для большего интерактива */}
+      <AnimatedEmoji
+        initial={{ x: -80, y: 0, rotate: 0 }}
+        animate={{ x: 20, y: 20, rotate: 10 }}
+        transition={{ duration: 2.2, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        style={{ top: 120, left: 10 }}
+      >😻</AnimatedEmoji>
+      <AnimatedEmoji
+        initial={{ x: 80, y: 0, rotate: 0 }}
+        animate={{ x: -20, y: 20, rotate: -10 }}
+        transition={{ duration: 2.5, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        style={{ top: 120, right: 10 }}
+      >💩</AnimatedEmoji>
+      <AnimatedEmoji
+        initial={{ x: 0, y: 0, scale: 1 }}
+        animate={{ x: 0, y: 30, scale: 1.2 }}
+        transition={{ duration: 2.8, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        style={{ bottom: 10, left: 180 }}
+      >🐱</AnimatedEmoji>
+      <AnimatedEmoji
+        initial={{ x: 0, y: 0, scale: 1 }}
+        animate={{ x: 0, y: -30, scale: 1.1 }}
+        transition={{ duration: 2.6, repeat: Infinity, repeatType: 'reverse', ease: 'easeInOut' }}
+        style={{ bottom: 10, right: 180 }}
+      >💩</AnimatedEmoji>
+      {/* Основной блок авторизации */}
       <Card
         initial={{ opacity: 0, y: -20 }}
         animate={{ opacity: 1, y: 0 }}
         transition={{ duration: 0.5 }}
       >
         <Title>Авторизация через Telegram</Title>
-        
         {loading ? (
           <>
             <Message>Обрабатываем данные авторизации...</Message>

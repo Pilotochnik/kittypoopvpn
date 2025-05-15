@@ -3,12 +3,11 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import CryptoPaymentSelector from '../components/CryptoPaymentSelector';
-import CryptoPaymentDetails from '../components/CryptoPaymentDetails';
 import QRCodeModal from '../components/QRCodeModal';
 import TelegramLoginButton from '../components/TelegramLoginButton';
-import { createPayment, getPayment, confirmPayment, confirmManualPayment } from '../utils/cryptoPaymentService';
 import { useAuth } from '../context/AuthContext';
+import { QRCodeSVG } from 'qrcode.react';
+import { FaCheckCircle, FaTimesCircle, FaClock, FaCreditCard, FaCoins } from 'react-icons/fa';
 
 const PageContainer = styled.div`
   min-height: 100vh;
@@ -145,6 +144,112 @@ const OrDivider = styled.div`
   }
 `;
 
+// Добавляю стили для карточек выбора способа оплаты
+const PaymentMethodsWrapper = styled.div`
+  max-width: 800px;
+  margin: 0 auto 40px auto;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+`;
+
+const ManualPayCard = styled(motion.div)`
+  width: 100%;
+  max-width: 700px;
+  margin-bottom: 32px;
+  background: linear-gradient(120deg, rgba(255,102,196,0.32) 60%, rgba(255,230,250,0.22) 100%);
+  border-radius: 20px;
+  box-shadow: 0 4px 24px #ff66c433;
+  text-align: center;
+  border: 1.5px solid #ff66c4;
+  padding: 32px 0 32px 0;
+  font-size: 1.18rem;
+  font-weight: 600;
+  color: #a03a7c;
+  transition: background 0.2s, box-shadow 0.2s;
+  &:hover {
+    background: linear-gradient(120deg, rgba(255,102,196,0.45) 60%, rgba(255,230,250,0.32) 100%);
+    box-shadow: 0 8px 32px #ff66c455;
+  }
+  @media (max-width: 700px) {
+    padding: 18px 0;
+    font-size: 1rem;
+    max-width: 98vw;
+  }
+`;
+
+const PaymentMethodsGrid = styled.div`
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 28px;
+  width: 100%;
+  @media (max-width: 700px) {
+    grid-template-columns: 1fr;
+    gap: 14px;
+  }
+`;
+
+const MethodCard = styled(motion.div)`
+  background: linear-gradient(120deg, #2b2d42 60%, #8c52ff 100%);
+  border-radius: 18px;
+  box-shadow: 0 4px 24px rgba(140,82,255,0.10);
+  padding: 28px 32px;
+  min-width: 220px;
+  max-width: 340px;
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  cursor: pointer;
+  border: 2px solid transparent;
+  transition: border 0.2s, box-shadow 0.2s;
+  color: #fff;
+  font-weight: 600;
+  font-size: 1.15rem;
+  &:hover, &:focus {
+    border: 2px solid var(--primary-color);
+    box-shadow: 0 8px 32px rgba(140,82,255,0.18);
+    background: linear-gradient(120deg, #8c52ff 60%, #ff66c4 100%);
+  }
+  @media (max-width: 600px) {
+    min-width: 0;
+    width: 100%;
+    padding: 18px 12px;
+    font-size: 1rem;
+  }
+`;
+
+const MethodIcon = styled.div`
+  font-size: 2.2rem;
+  margin-right: 10px;
+`;
+
+const MethodInfo = styled.div`
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+`;
+
+const MethodTitle = styled.div`
+  font-size: 1.18rem;
+  font-weight: 700;
+  margin-bottom: 4px;
+`;
+
+const MethodDesc = styled.div`
+  font-size: 0.98rem;
+  color: #e0e0e0;
+  font-weight: 400;
+`;
+
+const getCryptoIcon = (name) => {
+  try {
+    // eslint-disable-next-line import/no-dynamic-require, global-require
+    return <img src={`/${name}.svg`} alt={name} style={{width: 32, height: 32}} />;
+  } catch {
+    return <FaCoins />;
+  }
+};
+
 const PaymentPage = () => {
   const location = useLocation();
   const navigate = useNavigate();
@@ -158,6 +263,8 @@ const PaymentPage = () => {
   const [qrValue, setQrValue] = useState('');
   // eslint-disable-next-line no-unused-vars
   const [isPolling, setIsPolling] = useState(false);
+  const [selectedMethod, setSelectedMethod] = useState(null);
+  const [selectedCurrency, setSelectedCurrency] = useState(null);
   
   const searchParams = new URLSearchParams(location.search);
   const planParam = searchParams.get('plan') || 'standard';
@@ -167,7 +274,7 @@ const PaymentPage = () => {
   // Эффект для загрузки платежа при монтировании
   useEffect(() => {
     if (user && !paymentId) {
-      setStep('select-currency');
+      setStep('select-method');
     }
     
     if (paymentId) {
@@ -246,8 +353,9 @@ const PaymentPage = () => {
       setLoading(true);
       setError(null);
       
-      const paymentData = await getPayment(paymentId);
-      setPayment(paymentData);
+      const response = await fetch(`/api/payment/status/${paymentId}`);
+      const data = await response.json();
+      setPayment(data.payment);
       
       // Если платеж найден, переходим к отображению деталей
       setStep('payment-details');
@@ -263,17 +371,11 @@ const PaymentPage = () => {
     try {
       setLoading(true);
       setError(null);
-      
-      // Получаем ID пользователя из объекта пользователя или используем anonymous-user
       const userId = user?.id || 'anonymous-user';
-
-      // --- КОРРЕКТНЫЙ РАСЧЁТ СУММЫ ---
-      let amount = 500; // стандартный по умолчанию
-      if (planParam === 'basic') amount = 200; // Пробный месяц - всегда 200р 
-      if (planParam === 'standard') amount = 500; // Базовичок - всегда 500р за 3 месяца
-      if (planParam === 'premium') amount = 1500; // Наш котяра - всегда 1500р за год
-      // --- КОНЕЦ РАСЧЁТА ---
-
+      let amount = 500;
+      if (planParam === 'basic') amount = 200;
+      if (planParam === 'standard') amount = 500;
+      if (planParam === 'premium') amount = 1500;
       const paymentData = {
         userId,
         plan: planParam,
@@ -281,18 +383,26 @@ const PaymentPage = () => {
         period: periodParam,
         amount
       };
-      
-      const newPayment = await createPayment(paymentData);
-      setPayment(newPayment);
-      
-      // Обновляем URL, чтобы можно было вернуться к платежу
-      navigate(`/payment?paymentId=${newPayment.paymentId}`, { replace: true });
-      
-      // Переходим к шагу с отображением деталей платежа
+      const response = await fetch(`/api/payment/create`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(paymentData)
+      });
+      const data = await response.json();
+      if (!data.success || !data.payment) {
+        setError(data.message || 'Не удалось создать платеж. Попробуйте выбрать другую валюту или повторить позже.');
+        setPayment(null);
+        return;
+      }
+      setPayment(data.payment);
+      navigate(`/payment?paymentId=${data.payment.paymentId}`, { replace: true });
       setStep('payment-details');
     } catch (error) {
       console.error('Ошибка при создании платежа:', error);
-      setError(error.message || 'Не удалось создать платеж');
+      setError(error.message || 'Не удалось создать платеж. Попробуйте позже.');
+      setPayment(null);
     } finally {
       setLoading(false);
     }
@@ -339,7 +449,7 @@ const PaymentPage = () => {
   const handleBack = () => {
     if (step === 'payment-details') {
       // Возвращаемся к выбору криптовалюты
-      setStep('select-currency');
+      setStep('select-method');
       // Удаляем параметр paymentId из URL
       navigate('/payment', { replace: true });
     } else {
@@ -348,11 +458,15 @@ const PaymentPage = () => {
     }
   };
   
+  const handleShowInstructions = () => {
+    navigate('/faq');
+  };
+  
   const getStepTitle = () => {
     switch (step) {
       case 'auth':
         return 'Авторизация перед оплатой';
-      case 'select-currency':
+      case 'select-method':
         return 'Оплата криптовалютой';
       case 'payment-details':
         return 'Детали платежа';
@@ -365,7 +479,7 @@ const PaymentPage = () => {
     switch (step) {
       case 'auth':
         return 'Авторизуйтесь через Telegram для получения VPN-ключа после оплаты или продолжите без авторизации.';
-      case 'select-currency':
+      case 'select-method':
         return 'Выберите криптовалюту для оплаты выбранного тарифного плана.';
       case 'payment-details':
         if (payment && payment.status === 'completed') {
@@ -374,6 +488,15 @@ const PaymentPage = () => {
         return 'Отправьте точную сумму на указанный адрес кошелька. После подтверждения транзакции в сети ваш ключ будет активирован.';
       default:
         return '';
+    }
+  };
+  
+  const handleMethodSelect = (method) => {
+    setSelectedMethod(method);
+    if (method === 'crypto') {
+      handleCurrencySelect('TON');
+    } else if (method === 'manual_tinkoff') {
+      handleCurrencySelect('manual_tinkoff');
     }
   };
   
@@ -397,7 +520,7 @@ const PaymentPage = () => {
         
         <div style={{ display: 'flex', justifyContent: 'center', width: '100%' }}>
           <Button 
-            onClick={() => setStep('select-currency')} 
+            onClick={() => setStep('select-method')}
             whileHover={{ scale: 1.05 }}
             whileTap={{ scale: 0.95 }}
           >
@@ -437,20 +560,232 @@ const PaymentPage = () => {
           <>
             {step === 'auth' && renderAuthStep()}
             
-            {step === 'select-currency' && (
-              <CryptoPaymentSelector
-                onCurrencySelect={handleCurrencySelect}
-                onContinue={handleCurrencySelect}
-              />
+            {step === 'select-method' && (
+              <PaymentMethodsWrapper>
+                <ManualPayCard
+                  initial={{ opacity: 0, y: 30 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  transition={{ duration: 0.5 }}
+                  onClick={() => handleMethodSelect('manual_tinkoff')}
+                  style={{ cursor: 'pointer' }}
+                >
+                  <MethodIcon><FaCreditCard /></MethodIcon>
+                  <div style={{ fontWeight: 700, fontSize: 20, color: '#ff66c4', marginBottom: 6 }}>Карта Тинькофф</div>
+                  <div style={{ color: '#8c52ff', fontSize: 16, marginBottom: 4 }}>Оплата по реквизитам, подтверждение вручную</div>
+                  <div style={{ color: '#b36ad6', fontSize: 14 }}>Нажмите для выбора</div>
+                </ManualPayCard>
+                <PaymentMethodsGrid>
+                  <MethodCard
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.4 }}
+                    tabIndex={0}
+                    style={{
+                      border: selectedCurrency === 'TON' ? '2px solid #00ffd0' : '2px solid transparent',
+                      background: selectedCurrency === 'TON' ? 'linear-gradient(120deg, #00ffd0 60%, #8c52ff 100%)' : undefined,
+                      boxShadow: selectedCurrency === 'TON' ? '0 0 16px #00ffd055' : undefined
+                    }}
+                    onClick={() => { setSelectedCurrency('TON'); handleCurrencySelect('TON'); }}
+                  >
+                    <MethodIcon>{getCryptoIcon('ton')}</MethodIcon>
+                    <MethodInfo>
+                      <MethodTitle>TON</MethodTitle>
+                      <MethodDesc>Toncoin — быстро, анонимно, без комиссии</MethodDesc>
+                    </MethodInfo>
+                  </MethodCard>
+                  <MethodCard
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.5 }}
+                    tabIndex={0}
+                    style={{
+                      border: selectedCurrency === 'USDT_TRC20' ? '2px solid #00ffd0' : '2px solid transparent',
+                      background: selectedCurrency === 'USDT_TRC20' ? 'linear-gradient(120deg, #00ffd0 60%, #26a17b 100%)' : undefined,
+                      boxShadow: selectedCurrency === 'USDT_TRC20' ? '0 0 16px #00ffd055' : undefined
+                    }}
+                    onClick={() => { setSelectedCurrency('USDT_TRC20'); handleCurrencySelect('USDT_TRC20'); }}
+                  >
+                    <MethodIcon>{getCryptoIcon('usdt')}</MethodIcon>
+                    <MethodInfo>
+                      <MethodTitle>USDT <span style={{fontSize: '0.9em', color: '#26a17b'}}>TRC20</span></MethodTitle>
+                      <MethodDesc>USDT в сети Tron (TRC20)</MethodDesc>
+                    </MethodInfo>
+                  </MethodCard>
+                  <MethodCard
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.6 }}
+                    tabIndex={0}
+                    style={{
+                      border: selectedCurrency === 'USDT_ERC20' ? '2px solid #00ffd0' : '2px solid transparent',
+                      background: selectedCurrency === 'USDT_ERC20' ? 'linear-gradient(120deg, #00ffd0 60%, #627eea 100%)' : undefined,
+                      boxShadow: selectedCurrency === 'USDT_ERC20' ? '0 0 16px #00ffd055' : undefined
+                    }}
+                    onClick={() => { setSelectedCurrency('USDT_ERC20'); handleCurrencySelect('USDT_ERC20'); }}
+                  >
+                    <MethodIcon>{getCryptoIcon('usdt')}</MethodIcon>
+                    <MethodInfo>
+                      <MethodTitle>USDT <span style={{fontSize: '0.9em', color: '#627eea'}}>ERC20</span></MethodTitle>
+                      <MethodDesc>USDT в сети Ethereum (ERC20)</MethodDesc>
+                    </MethodInfo>
+                  </MethodCard>
+                  <MethodCard
+                    initial={{ opacity: 0, y: 30 }}
+                    animate={{ opacity: 1, y: 0 }}
+                    transition={{ duration: 0.7 }}
+                    tabIndex={0}
+                    style={{
+                      border: selectedCurrency === 'BTC' ? '2px solid #ffb300' : '2px solid transparent',
+                      background: selectedCurrency === 'BTC' ? 'linear-gradient(120deg, #ffb300 60%, #8c52ff 100%)' : undefined,
+                      boxShadow: selectedCurrency === 'BTC' ? '0 0 16px #ffb30055' : undefined
+                    }}
+                    onClick={() => { setSelectedCurrency('BTC'); handleCurrencySelect('BTC'); }}
+                  >
+                    <MethodIcon>{getCryptoIcon('btc')}</MethodIcon>
+                    <MethodInfo>
+                      <MethodTitle>BTC</MethodTitle>
+                      <MethodDesc>Bitcoin — классика крипто</MethodDesc>
+                    </MethodInfo>
+                  </MethodCard>
+                </PaymentMethodsGrid>
+              </PaymentMethodsWrapper>
             )}
             
-            {step === 'payment-details' && payment && (
-              <CryptoPaymentDetails
-                payment={payment}
-                onConfirm={handlePaymentConfirm}
-                onBack={handleBack}
-                onCheckQR={handleShowQRCode}
-              />
+            {step === 'payment-details' && payment && payment.cryptopayPayUrl && (
+              <div style={{
+                background: '#181828',
+                borderRadius: 12,
+                padding: 24,
+                margin: '0 auto 30px',
+                maxWidth: 420,
+                boxShadow: '0 2px 12px rgba(0,0,0,0.08)',
+                textAlign: 'center',
+                border: '1px solid #444'
+              }}>
+                <h2 style={{color: '#ff66c4', marginBottom: 18}}>Оплата криптовалютой</h2>
+                <div style={{marginBottom: 18, fontSize: 18}}>
+                  Отсканируйте QR-код или перейдите по ссылке для оплаты:<br/>
+                  <a href={payment.cryptopayPayUrl} target="_blank" rel="noopener noreferrer" style={{color: '#8c52ff', wordBreak: 'break-all'}}>
+                    {payment.cryptopayPayUrl}
+                  </a>
+                </div>
+                <div style={{margin: '0 auto 18px', width: 200, background: '#23234a', borderRadius: 8, padding: 10}}>
+                  <QRCodeSVG value={payment.cryptopayPayUrl} size={180} />
+                </div>
+                <div style={{color: '#aaa', fontSize: 15, marginBottom: 18}}>
+                  После оплаты ключ будет выдан автоматически.<br/>
+                  <b>Сумма:</b> {payment.amount} ₽<br/>
+                  <b>Валюта:</b> {(() => {
+                    if (payment.currency === 'USDT_TRC20') return 'USDT (TRC20)';
+                    if (payment.currency === 'USDT_ERC20') return 'USDT (ERC20)';
+                    if (payment.currency === 'TON') return 'TON';
+                    if (payment.currency === 'BTC') return 'BTC';
+                    return payment.currency;
+                  })()}
+                </div>
+                {payment.status === 'pending' && (
+                  <div style={{color: '#ffb300', fontSize: 16, marginTop: 16}}>
+                    Ожидание оплаты...
+                  </div>
+                )}
+                {payment.status === 'completed' && (
+                  <div style={{color: '#2ecc40', fontSize: 18, marginTop: 16}}>
+                    Оплата прошла успешно! Ваш ключ выдан.<br/>
+                    {payment.vpnKey && payment.vpnKey.config && (
+                      <div style={{
+                        background: '#23234a',
+                        border: '1px solid #2ecc40',
+                        borderRadius: 8,
+                        marginTop: 14,
+                        padding: 10,
+                        wordBreak: 'break-all',
+                        fontFamily: 'monospace',
+                        color: '#fff',
+                        fontSize: 14,
+                        textAlign: 'left'
+                      }}>
+                        <div style={{fontWeight: 700, color: '#2ecc40', marginBottom: 4}}>VPN-ключ:</div>
+                        <div>{payment.vpnKey.config}</div>
+                        <div style={{marginTop: 8, color: '#aaa', fontSize: 13}}>
+                          Скопируйте ключ и используйте в приложении V2rayNG/V2rayTUN.<br/>Инструкция по настройке — в разделе FAQ.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
+            
+            {step === 'payment-details' && payment && !payment.cryptopayPayUrl && (
+              <div style={{
+                background: 'linear-gradient(120deg, #ff66c4 60%, #ffe6fa 100%)',
+                borderRadius: 16,
+                padding: 24,
+                margin: '0 auto 30px',
+                maxWidth: 420,
+                boxShadow: '0 4px 24px #ff66c455',
+                textAlign: 'center',
+                border: '1.5px solid #ff66c4',
+                transition: 'all 0.3s',
+                '@media (max-width: 600px)': {
+                  padding: 12,
+                  maxWidth: '98vw',
+                  fontSize: 15
+                }
+              }}>
+                <h2 style={{color: '#ff66c4', marginBottom: 18}}>Оплата картой</h2>
+                <div style={{marginBottom: 18, fontSize: 18}}>
+                  Переведите <b>{payment.amount} ₽</b> на карту:<br/>
+                  <span style={{fontWeight: 700, fontSize: 22, color: '#8c52ff'}}>2200 7007 7450 0382</span>
+                </div>
+                <div style={{color: '#aaa', fontSize: 15, marginBottom: 18}}>
+                  В комментарии к платежу укажите: <b>{payment.paymentId}</b>
+                </div>
+                <button
+                  style={{
+                    background: '#8c52ff',
+                    color: '#fff',
+                    fontWeight: 700,
+                    borderRadius: 8,
+                    padding: '12px 28px',
+                    fontSize: 17,
+                    border: 'none',
+                    cursor: 'pointer',
+                    marginBottom: 10
+                  }}
+                  onClick={handlePaymentConfirm}
+                >Я оплатил</button>
+                {payment.status === 'waiting_confirmation' && (
+                  <div style={{color: '#ff66c4', fontSize: 16, marginTop: 16}}>
+                    Ожидание подтверждения администратором...
+                  </div>
+                )}
+                {payment.status === 'completed' && (
+                  <div style={{color: '#2ecc40', fontSize: 18, marginTop: 16}}>
+                    Оплата прошла успешно! Ваш ключ выдан.<br/>
+                    {payment.vpnKey && payment.vpnKey.config && (
+                      <div style={{
+                        background: '#23234a',
+                        border: '1px solid #2ecc40',
+                        borderRadius: 8,
+                        marginTop: 14,
+                        padding: 10,
+                        wordBreak: 'break-all',
+                        fontFamily: 'monospace',
+                        color: '#fff',
+                        fontSize: 14,
+                        textAlign: 'left'
+                      }}>
+                        <div style={{fontWeight: 700, color: '#2ecc40', marginBottom: 4}}>VPN-ключ:</div>
+                        <div>{payment.vpnKey.config}</div>
+                        <div style={{marginTop: 8, color: '#aaa', fontSize: 13}}>
+                          Скопируйте ключ и используйте в приложении V2rayNG/V2rayTUN.<br/>Инструкция по настройке — в разделе FAQ.
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
             )}
           </>
         )}

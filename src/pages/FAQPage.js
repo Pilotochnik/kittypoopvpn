@@ -6,7 +6,10 @@ import { FaApple, FaAndroid, FaWindows, FaLinux } from 'react-icons/fa';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  padding-top: 80px;
+  padding-top: 10px;
+  @media (max-width: 600px) {
+    padding-top: 2px;
+  }
 `;
 
 const HeroSection = styled.section`
@@ -15,10 +18,13 @@ const HeroSection = styled.section`
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 80px 20px 40px;
+  padding: 40px 20px 30px;
   background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f14 80%);
   position: relative;
   overflow: hidden;
+  @media (max-width: 600px) {
+    padding: 16px 4px 10px;
+  }
 `;
 
 const HeroTitle = styled(motion.h1)`
@@ -29,9 +35,12 @@ const HeroTitle = styled(motion.h1)`
   -webkit-text-fill-color: transparent;
   position: relative;
   z-index: 1;
-
   @media (max-width: 768px) {
     font-size: 2.5rem;
+  }
+  @media (max-width: 600px) {
+    font-size: 1.3rem;
+    margin-bottom: 8px;
   }
 `;
 
@@ -42,9 +51,12 @@ const HeroSubtitle = styled(motion.p)`
   margin-bottom: 40px;
   position: relative;
   z-index: 1;
-
   @media (max-width: 768px) {
     font-size: 1rem;
+  }
+  @media (max-width: 600px) {
+    font-size: 0.9rem;
+    margin-bottom: 12px;
   }
 `;
 
@@ -52,6 +64,9 @@ const ContentSection = styled.section`
   max-width: 900px;
   margin: 0 auto;
   padding: 60px 20px;
+  @media (max-width: 600px) {
+    padding: 16px 4px;
+  }
 `;
 
 const SectionTitle = styled.h2`
@@ -61,10 +76,17 @@ const SectionTitle = styled.h2`
   background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
+  @media (max-width: 600px) {
+    font-size: 1.1rem;
+    margin-bottom: 14px;
+  }
 `;
 
 const FaqContainer = styled.div`
   margin-bottom: 60px;
+  @media (max-width: 600px) {
+    margin-bottom: 18px;
+  }
 `;
 
 const FaqItem = styled.div`
@@ -74,6 +96,10 @@ const FaqItem = styled.div`
   overflow: hidden;
   box-shadow: 0 8px 15px rgba(0, 0, 0, 0.2);
   border: 1px solid rgba(255, 255, 255, 0.05);
+  @media (max-width: 600px) {
+    border-radius: 7px;
+    margin-bottom: 10px;
+  }
 `;
 
 const FaqQuestion = styled.div`
@@ -86,9 +112,12 @@ const FaqQuestion = styled.div`
   font-size: 18px;
   transition: all 0.3s ease;
   color: var(--text-color);
-  
   &:hover {
     background-color: rgba(255, 255, 255, 0.05);
+  }
+  @media (max-width: 600px) {
+    font-size: 1rem;
+    padding: 10px 8px;
   }
 `;
 
@@ -102,6 +131,10 @@ const FaqAnswerContent = styled.div`
   padding: 0 25px 20px;
   color: var(--text-secondary);
   line-height: 1.6;
+  @media (max-width: 600px) {
+    padding: 0 8px 10px;
+    font-size: 0.95rem;
+  }
 `;
 
 const StepTitle = styled.h3`
@@ -115,6 +148,10 @@ const StepsList = styled.ol`
   list-style-type: none;
   padding-left: 0;
   margin-top: 20px;
+  @media (max-width: 600px) {
+    margin-top: 8px;
+    font-size: 0.95rem;
+  }
   
   & li {
     position: relative;
@@ -263,6 +300,11 @@ const DownloadButtonsContainer = styled.div`
   display: flex;
   justify-content: center;
   margin-bottom: 20px;
+  @media (max-width: 600px) {
+    flex-direction: column;
+    gap: 8px;
+    margin-bottom: 10px;
+  }
 `;
 
 const DownloadButton = styled.a`

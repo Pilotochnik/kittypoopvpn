@@ -326,19 +326,6 @@ async function confirmPayment(chatId, paymentId) {
     
     await bot.sendMessage(chatId, `✅ Платеж ${paymentId} подтвержден и ключ отправлен пользователю.`);
     
-    // Отправляем администратору детали ключа
-    await bot.sendMessage(chatId, 
-      `📋 Сгенерированный VPN-ключ:\n\n` +
-      `👤 Пользователь: ${payment.userId}\n` +
-      `🔑 ID ключа: ${vpnKeyData.uuid}\n` +
-      `📊 Тариф: ${getPlanName ? getPlanName(payment.plan) : payment.plan}\n` +
-      `⏱️ Период: ${getPeriodName(payment.period)}\n` +
-      `📆 Действует до: ${new Date(vpnKeyData.expires).toLocaleString('ru-RU')}`
-    );
-    
-    // Отправляем конфигурацию отдельным сообщением без HTML-форматирования
-    await bot.sendMessage(chatId, `Конфигурация:\n${keyConfigText}`);
-    
     // Проверяем наличие ключа в базе данных
     const verifyKey = await VpnKey.findByUuid(vpnKeyData.uuid);
     if (!verifyKey) {

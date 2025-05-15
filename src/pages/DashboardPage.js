@@ -9,12 +9,19 @@ const DashboardContainer = styled.div`
   min-height: 100vh;
   padding-top: 100px;
   padding-bottom: 50px;
+  @media (max-width: 600px) {
+    padding-top: 56px;
+    padding-bottom: 18px;
+  }
 `;
 
 const Content = styled.div`
   max-width: 1200px;
   margin: 0 auto;
   padding: 0 20px;
+  @media (max-width: 600px) {
+    padding: 0 4px;
+  }
 `;
 
 const DashboardHeader = styled.div`
@@ -22,11 +29,14 @@ const DashboardHeader = styled.div`
   justify-content: space-between;
   align-items: center;
   margin-bottom: 40px;
-  
   @media (max-width: 768px) {
     flex-direction: column;
     align-items: flex-start;
     gap: 20px;
+  }
+  @media (max-width: 600px) {
+    margin-bottom: 16px;
+    gap: 8px;
   }
 `;
 
@@ -41,6 +51,9 @@ const UserInfo = styled.div`
   display: flex;
   align-items: center;
   gap: 15px;
+  @media (max-width: 600px) {
+    gap: 6px;
+  }
 `;
 
 const UserAvatar = styled.div`
@@ -54,17 +67,28 @@ const UserAvatar = styled.div`
   font-size: 24px;
   color: white;
   font-weight: bold;
+  @media (max-width: 600px) {
+    width: 38px;
+    height: 38px;
+    font-size: 16px;
+  }
 `;
 
 const UserDetails = styled.div`
   h3 {
     font-size: 1.2rem;
     margin-bottom: 5px;
+    @media (max-width: 600px) {
+      font-size: 1rem;
+      margin-bottom: 2px;
+    }
   }
-  
   p {
     color: var(--text-secondary);
     font-size: 0.9rem;
+    @media (max-width: 600px) {
+      font-size: 0.8rem;
+    }
   }
 `;
 
@@ -73,19 +97,20 @@ const Tabs = styled.div`
   gap: 10px;
   margin-bottom: 30px;
   border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-  
   @media (max-width: 768px) {
     overflow-x: auto;
     padding-bottom: 5px;
-    
     &::-webkit-scrollbar {
       height: 4px;
     }
-    
     &::-webkit-scrollbar-thumb {
       background: rgba(255, 255, 255, 0.1);
       border-radius: 4px;
     }
+  }
+  @media (max-width: 600px) {
+    gap: 4px;
+    margin-bottom: 10px;
   }
 `;
 
@@ -111,6 +136,11 @@ const Card = styled(motion.div)`
   padding: 30px;
   margin-bottom: 30px;
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
+  @media (max-width: 600px) {
+    padding: 10px 6px;
+    border-radius: 7px;
+    margin-bottom: 10px;
+  }
 `;
 
 const StatGrid = styled.div`
@@ -118,6 +148,11 @@ const StatGrid = styled.div`
   grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
   gap: 20px;
   margin-bottom: 40px;
+  @media (max-width: 600px) {
+    grid-template-columns: 1fr;
+    gap: 10px;
+    margin-bottom: 14px;
+  }
 `;
 
 const StatCard = styled(motion.div)`
@@ -128,6 +163,10 @@ const StatCard = styled(motion.div)`
   border: 1px solid rgba(255, 255, 255, 0.05);
   display: flex;
   flex-direction: column;
+  @media (max-width: 600px) {
+    padding: 10px 6px;
+    border-radius: 7px;
+  }
   
   h3 {
     font-size: 1rem;

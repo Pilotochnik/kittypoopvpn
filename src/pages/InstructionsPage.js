@@ -76,16 +76,13 @@ const StepTitle = styled.h3`
 const StepsList = styled.ol`
   padding-left: 20px;
   margin-bottom: 30px;
-  
   li {
     margin-bottom: 15px;
     color: var(--text-secondary);
     line-height: 1.6;
-    
     strong {
       color: var(--text-color);
     }
-    
     pre, code {
       background-color: rgba(0, 0, 0, 0.2);
       padding: 10px;
@@ -98,6 +95,12 @@ const StepsList = styled.ol`
       word-break: break-all;
     }
   }
+  @media (max-width: 600px) {
+    padding-left: 8px;
+    margin-bottom: 12px;
+    li { margin-bottom: 7px; font-size: 0.95rem; }
+    pre, code { font-size: 0.92rem; padding: 6px; border-radius: 5px; }
+  }
 `;
 
 const ImportantNote = styled.div`
@@ -107,9 +110,14 @@ const ImportantNote = styled.div`
   margin-bottom: 30px;
   border-radius: 4px;
   color: var(--text-secondary);
-  
   strong {
     color: var(--success-color);
+  }
+  @media (max-width: 600px) {
+    padding: 8px 4px;
+    margin-bottom: 12px;
+    border-radius: 3px;
+    font-size: 0.95rem;
   }
 `;
 
@@ -128,19 +136,23 @@ const DownloadSection = styled.div`
   background-color: rgba(51, 204, 255, 0.1);
   border-radius: 12px;
   padding: 20px;
-  
   h3 {
     color: var(--accent-color);
     margin-bottom: 15px;
   }
-  
   ul {
     list-style: none;
     padding: 0;
   }
-  
   li {
     margin-bottom: 10px;
+  }
+  @media (max-width: 600px) {
+    margin-top: 10px;
+    border-radius: 7px;
+    padding: 8px 4px;
+    h3 { font-size: 1rem; margin-bottom: 6px; }
+    li { margin-bottom: 4px; }
   }
 `;
 

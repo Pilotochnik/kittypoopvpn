@@ -7,6 +7,9 @@ import { QRCodeSVG } from 'qrcode.react';
 
 const KeysContainer = styled.div`
   margin: 30px 0;
+  @media (max-width: 600px) {
+    margin: 10px 0;
+  }
 `;
 
 const KeyCard = styled(motion.div)`
@@ -17,6 +20,11 @@ const KeyCard = styled(motion.div)`
   box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1);
   position: relative;
   border: 1px solid rgba(255, 255, 255, 0.05);
+  @media (max-width: 600px) {
+    padding: 8px 4px;
+    border-radius: 7px;
+    margin-bottom: 10px;
+  }
 `;
 
 const KeyName = styled.h3`
@@ -26,6 +34,11 @@ const KeyName = styled.h3`
   display: flex;
   align-items: center;
   gap: 10px;
+  @media (max-width: 600px) {
+    font-size: 1rem;
+    margin-bottom: 6px;
+    gap: 4px;
+  }
 `;
 
 const KeyStatus = styled.span`
@@ -54,6 +67,12 @@ const KeyValue = styled.div`
   white-space: nowrap;
   margin: 10px 0;
   position: relative;
+  @media (max-width: 600px) {
+    font-size: 10px;
+    padding: 7px 4px;
+    border-radius: 5px;
+    margin: 6px 0;
+  }
 `;
 
 const DetailRow = styled.div`
@@ -82,6 +101,10 @@ const ActionButtons = styled.div`
   gap: 10px;
   margin-top: 15px;
   flex-wrap: wrap;
+  @media (max-width: 600px) {
+    gap: 4px;
+    margin-top: 6px;
+  }
 `;
 
 const Button = styled(motion.button)`
@@ -114,9 +137,14 @@ const CopyButton = styled(motion.button)`
   cursor: pointer;
   padding: 4px 8px;
   border-radius: 4px;
-  
   &:hover {
     background-color: rgba(255, 255, 255, 0.1);
+  }
+  @media (max-width: 600px) {
+    font-size: 16px;
+    right: 4px;
+    top: 4px;
+    padding: 2px 4px;
   }
 `;
 
@@ -141,18 +169,15 @@ const QRCodeContainer = styled(motion.div)`
   max-width: 300px;
   width: 100%;
   text-align: center;
-  
   h3 {
     margin-bottom: 15px;
     color: var(--background-color);
   }
-  
   .qr-container {
     display: flex;
     justify-content: center;
     margin-bottom: 15px;
   }
-  
   button {
     background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
     color: white;
@@ -161,6 +186,14 @@ const QRCodeContainer = styled(motion.div)`
     border-radius: 8px;
     cursor: pointer;
     font-weight: 600;
+  }
+  @media (max-width: 600px) {
+    padding: 8px 2px;
+    border-radius: 7px;
+    max-width: 98vw;
+    h3 { font-size: 1rem; margin-bottom: 6px; }
+    .qr-container { margin-bottom: 6px; }
+    button { padding: 7px 8px; border-radius: 6px; font-size: 0.95rem; }
   }
 `;
 
