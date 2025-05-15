@@ -563,6 +563,7 @@ const PaymentPage = () => {
             {step === 'select-method' && (
               <PaymentMethodsWrapper>
                 <ManualPayCard
+                  data-testid="manual-pay"
                   initial={{ opacity: 0, y: 30 }}
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.5 }}
@@ -575,7 +576,7 @@ const PaymentPage = () => {
                   <div style={{ color: '#b36ad6', fontSize: 14 }}>Нажмите для выбора</div>
                 </ManualPayCard>
                 <PaymentMethodsGrid>
-                  <MethodCard
+                  <MethodCard data-testid="crypto-ton"
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.4 }}
@@ -593,7 +594,7 @@ const PaymentPage = () => {
                       <MethodDesc>Toncoin — быстро, анонимно, без комиссии</MethodDesc>
                     </MethodInfo>
                   </MethodCard>
-                  <MethodCard
+                  <MethodCard data-testid="crypto-usdt-trc20"
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.5 }}
@@ -611,7 +612,7 @@ const PaymentPage = () => {
                       <MethodDesc>USDT в сети Tron (TRC20)</MethodDesc>
                     </MethodInfo>
                   </MethodCard>
-                  <MethodCard
+                  <MethodCard data-testid="crypto-usdt-erc20"
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.6 }}
@@ -629,7 +630,7 @@ const PaymentPage = () => {
                       <MethodDesc>USDT в сети Ethereum (ERC20)</MethodDesc>
                     </MethodInfo>
                   </MethodCard>
-                  <MethodCard
+                  <MethodCard data-testid="crypto-btc"
                     initial={{ opacity: 0, y: 30 }}
                     animate={{ opacity: 1, y: 0 }}
                     transition={{ duration: 0.7 }}

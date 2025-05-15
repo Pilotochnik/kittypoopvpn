@@ -6,9 +6,9 @@ import TrialKeyGenerator from '../components/TrialKeyGenerator';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  padding-top: 80px;
+  padding-top: 8px;
   @media (max-width: 600px) {
-    padding-top: 48px;
+    padding-top: 4px;
   }
 `;
 
@@ -18,12 +18,12 @@ const HeroSection = styled.section`
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 30px 20px 50px;
+  padding: 0 12px 10px;
   background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f14 80%);
   position: relative;
   overflow: hidden;
   @media (max-width: 600px) {
-    padding: 18px 4px 24px;
+    padding: 0 2px 4px;
   }
 
   & > .floating-emoji {
@@ -309,8 +309,6 @@ const HomePage = () => {
         >
           Безопасный и быстрый VPN-сервис для анонимного серфинга в интернете
         </HeroSubtitle>
-        
-        <TrialKeyGenerator />
         
         <ButtonGroup
           initial={{ opacity: 0, y: -20 }}

@@ -183,18 +183,6 @@ const LoginPage = () => {
         >
           <span style={{fontSize:'1.5em'}}>✈️</span> Войти через Telegram
         </TelegramButton>
-
-        {/* Кнопки для отладки (только для разработки) */}
-        {process.env.NODE_ENV !== 'production' && (
-          <div style={{ marginTop: 24, textAlign: 'center' }}>
-            <button onClick={downloadLogs} style={{ marginRight: 12, padding: '8px 16px', borderRadius: 6, background: '#eee', color: '#333', border: '1px solid #ccc', cursor: 'pointer' }}>
-              Скачать логи авторизации
-            </button>
-            <button onClick={handleClearLogs} style={{ padding: '8px 16px', borderRadius: 6, background: '#eee', color: '#333', border: '1px solid #ccc', cursor: 'pointer' }}>
-              Очистить логи
-            </button>
-          </div>
-        )}
       </FormContainer>
     </PageContainer>
   );
