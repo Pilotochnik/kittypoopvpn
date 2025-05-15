@@ -187,7 +187,6 @@ const KeysList = () => {
   const [keysStatus, setKeysStatus] = useState({});
   const [expanded, setExpanded] = useState({});
   const [copied, setCopied] = useState({});
-  const [showQRCode, setShowQRCode] = useState(null);
 
   useEffect(() => {
     // В реальном приложении здесь был бы API запрос
@@ -234,18 +233,6 @@ const KeysList = () => {
     }, 2000);
   };
 
-  const openQRCode = (keyId) => {
-    setShowQRCode(keyId);
-  };
-
-  const closeQRCode = () => {
-    setShowQRCode(null);
-  };
-
-  const getQRCodeUrl = (vlessUrl) => {
-    return vlessUrl;
-  };
-
   return (
     <KeysContainer>
       <h2>Ваши VPN-ключи</h2>
@@ -278,47 +265,9 @@ const KeysList = () => {
             <button onClick={() => toggleExpand(key.id)}>
               {expanded[key.id] ? 'Скрыть полный ключ' : 'Показать полный ключ'}
             </button>
-            
-            <ActionButtons>
-              <Button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-                Продлить ключ
-              </Button>
-              <Button secondary whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }} onClick={() => openQRCode(key.id)}>
-                QR-код
-              </Button>
-            </ActionButtons>
           </KeyCard>
         );
       })}
-
-      {showQRCode && (
-        <QRCodeModal
-          initial={{ opacity: 0 }}
-          animate={{ opacity: 1 }}
-          exit={{ opacity: 0 }}
-          onClick={closeQRCode}
-        >
-          <QRCodeContainer
-            onClick={(e) => e.stopPropagation()}
-            initial={{ scale: 0.9 }}
-            animate={{ scale: 1 }}
-            exit={{ scale: 0.9 }}
-          >
-            <h3>QR-код вашего ключа</h3>
-            <div className="qr-container">
-              <QRCodeSVG 
-                value={keys.find(key => key.id === showQRCode)?.vlessUrl}
-                size={250}
-                bgColor={"#ffffff"}
-                fgColor={"#000000"}
-                level={"L"}
-                includeMargin={false}
-              />
-            </div>
-            <button onClick={closeQRCode}>Закрыть</button>
-          </QRCodeContainer>
-        </QRCodeModal>
-      )}
     </KeysContainer>
   );
 };

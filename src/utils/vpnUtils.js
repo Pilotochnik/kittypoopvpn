@@ -5,8 +5,8 @@ export const generateVlessKey = (params = {}) => {
   // Настройки по умолчанию
   const defaults = {
     uuid: uuidv4(),
-    serverDomain: 'pilotochnik.duckdns.org',
-    port: 443,
+    serverDomain: '167.99.215.131',
+    port: 4843,
     encryption: 'none',
     security: 'tls',
     type: 'ws',
@@ -26,55 +26,54 @@ export const generateVlessKey = (params = {}) => {
 };
 
 // Функция для анализа VLESS ключей
-export const parseVlessKey = (vlessUrl) => {
+export const parseVlessKey = (key) => {
   try {
-    // Удаляем протокол 'vless://'
-    const protocolRemoved = vlessUrl.replace('vless://', '');
+    const url = new URL(key);
+    if (url.protocol !== 'vless:') {
+      throw new Error('Invalid VLESS key format');
+    }
+
+    const params = new URLSearchParams(url.search);
+    const requiredParams = ['encryption', 'security', 'type', 'host', 'path'];
     
-    // Разделяем на основную часть и метку (#)
-    const [mainPart, name] = protocolRemoved.split('#');
-    
-    // Разделяем основную часть на UUID@domain:port?params
-    const [uuidWithServer, queryString] = mainPart.split('?');
-    
-    // Извлекаем UUID и сервер
-    const [uuid, serverWithPort] = uuidWithServer.split('@');
-    
-    // Разделяем сервер и порт
-    const [serverDomain, port] = serverWithPort.split(':');
-    
-    // Преобразуем параметры запроса в объект
-    const params = {};
-    queryString.split('&').forEach(param => {
-      const [key, value] = param.split('=');
-      params[key] = decodeURIComponent(value);
-    });
-    
+    for (const param of requiredParams) {
+      if (!params.has(param)) {
+        throw new Error('Missing required parameters');
+      }
+    }
+
     return {
-      uuid,
-      serverDomain,
-      port: parseInt(port, 10),
-      name: decodeURIComponent(name || ''),
-      encryption: params.encryption || 'none',
-      security: params.security || 'tls',
-      type: params.type || 'ws',
-      host: params.host || serverDomain,
-      path: params.path || '/vless'
+      uuid: url.username,
+      host: url.hostname,
+      port: url.port,
+      encryption: params.get('encryption'),
+      security: params.get('security'),
+      type: params.get('type'),
+      path: params.get('path'),
+      name: url.hash.substring(1) || 'VPN Key'
     };
   } catch (error) {
-    console.error('Ошибка при разборе VLESS ключа:', error);
-    return null;
+    throw new Error('Invalid VLESS key format');
   }
 };
 
 // Функция для проверки статуса ключа
 export const checkKeyStatus = async (keyData) => {
-  // В реальном приложении здесь будет запрос к API для проверки статуса
-  // Сейчас просто имитируем результат
-  return {
-    active: true,
-    expiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // +30 дней
-    trafficUsed: Math.floor(Math.random() * 10000), // случайное значение трафика в МБ
-    maxTraffic: 100000 // 100 ГБ в МБ
-  };
+  try {
+    const response = await fetch('/api/check-key', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json'
+      },
+      body: JSON.stringify(keyData)
+    });
+
+    if (!response.ok) {
+      throw new Error('Failed to check key status');
+    }
+
+    return await response.json();
+  } catch (error) {
+    throw new Error('Failed to check key status');
+  }
 }; 

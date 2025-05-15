@@ -1,10 +1,14 @@
 const express = require('express');
 const crypto = require('crypto');
 const blockchainService = require('../blockchainService');
-const Payment = require('../models/Payment');
+const PaymentService = require('../models/Payment');
 const User = require('../models/User');
 const VpnKey = require('../models/VpnKey');
 const TelegramBot = require('node-telegram-bot-api');
+const axios = require('axios');
+const { sendAdminNotification } = require('../bot');
+const { startPaymentVerification } = require('../services/paymentVerification');
+const { logger } = require('../utils/logger');
 require('dotenv').config();
 
 const router = express.Router();
@@ -16,146 +20,180 @@ const bot = new TelegramBot(token, { polling: false });
 // Хранилище для таймеров проверки платежей
 const paymentTimers = new Map();
 
-// Функция для логирования
-const logger = {
-  info: (message, data = {}) => {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level: 'INFO',
-      message,
-      ...data
-    };
-    console.log(JSON.stringify(logEntry));
-  },
-  error: (message, error = null, data = {}) => {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level: 'ERROR',
-      message,
-      error: error ? { message: error.message, stack: error.stack } : null,
-      ...data
-    };
-    console.error(JSON.stringify(logEntry));
-  },
-  warning: (message, data = {}) => {
-    const logEntry = {
-      timestamp: new Date().toISOString(),
-      level: 'WARNING',
-      message,
-      ...data
-    };
-    console.warn(JSON.stringify(logEntry));
-  }
-};
+// Хранилище для таймеров деактивации ключей
+const deactivationTimers = new Map();
+
+// Кеш для хранения курсов валют
+const rateCache = new Map();
+const RATE_CACHE_TTL = 5 * 60 * 1000; // 5 минут
 
 // Генерация уникального ID платежа
 const generatePaymentId = () => {
   return 'pay_' + crypto.randomBytes(10).toString('hex');
 };
 
-// API для создания крипто-платежа
+// Получение реального курса валют через CoinGecko
+async function getCryptoRate(currency) {
+  try {
+    // Проверяем кеш
+    const cached = rateCache.get(currency);
+    if (cached && (Date.now() - cached.timestamp) < RATE_CACHE_TTL) {
+      return cached.rate;
+    }
+
+    const ids = {
+      eth: 'ethereum',
+      ton: 'the-open-network',
+      usdt_erc20: 'tether',
+      usdt_trc20: 'tether',
+      usdt: 'tether',
+      usdt_eth: 'tether'
+    };
+
+    const id = ids[currency];
+    if (!id) {
+      // Для manual_tinkoff возвращаем фиксированный курс 1:1
+      if (currency === 'manual_tinkoff') {
+        return { usd: 1, rub: 1 };
+      }
+      return null;
+    }
+
+    // Получаем курсы в USD и RUB
+    const res = await axios.get(
+      `https://api.coingecko.com/api/v3/simple/price?ids=${id}&vs_currencies=usd,rub`
+    );
+
+    if (!res.data[id]) {
+      throw new Error('Не удалось получить курс');
+    }
+
+    const rate = {
+      usd: res.data[id].usd,
+      rub: res.data[id].rub
+    };
+
+    // Сохраняем в кеш
+    rateCache.set(currency, {
+      rate,
+      timestamp: Date.now()
+    });
+
+    return rate;
+  } catch (e) {
+    console.error('Ошибка получения курса CoinGecko:', e);
+    
+    // Фолбэк на дефолтные значения
+    const defaultRates = {
+      eth: { usd: 3000, rub: 270000 },
+      ton: { usd: 5, rub: 450 },
+      usdt: { usd: 1, rub: 90 },
+      usdt_erc20: { usd: 1, rub: 90 },
+      usdt_trc20: { usd: 1, rub: 90 },
+      usdt_eth: { usd: 1, rub: 90 },
+      manual_tinkoff: { usd: 1, rub: 1 }
+    };
+
+    return defaultRates[currency] || null;
+  }
+}
+
+// API для создания крипто-платежа (анонимно или с userId)
 router.post('/create', async (req, res) => {
   try {
     const { amount, currency, plan, period, userId } = req.body;
-    
     logger.info('Получен запрос на создание платежа', { userId, plan, period, currency });
-    
     // Валидация входных данных
-    if (!amount || !currency || !plan || !period || !userId) {
-      logger.warning('Неполные данные платежа', { 
-        received: { amount, currency, plan, period, userId } 
-      });
-      
+    if (!currency || !plan || !period || !userId) {
+      logger.warning('Неполные данные платежа', { received: { amount, currency, plan, period, userId } });
+      return res.status(400).json({ success: false, message: 'Не указаны все необходимые параметры' });
+    }
+    // --- Убираем проверку существования пользователя для анонимных ---
+    let user = null;
+    if (userId !== 'anonymous-user') {
+      user = await User.findById(userId);
+      if (!user) {
+        logger.warning('Пользователь не найден при создании платежа', { userId });
+        return res.status(404).json({ success: false, message: 'Пользователь не найден' });
+      }
+    }
+    
+    // Рассчитываем базовую сумму в рублях
+    let rubAmount;
+    switch(plan) {
+      case 'basic':
+        rubAmount = 200; // Пробный месяц
+        break;
+      case 'standard':
+        rubAmount = 500; // Базовичок
+        break;
+      case 'premium':
+        rubAmount = 1500; // Наш котяра
+        break;
+      default:
+        rubAmount = 500;
+    }
+
+    // Получаем актуальный курс валюты
+    const rates = await getCryptoRate(currency);
+    if (!rates) {
       return res.status(400).json({
         success: false,
-        message: 'Не указаны все необходимые параметры'
+        message: 'Не удалось получить курс валюты'
       });
     }
 
-    // Проверка существования пользователя
-    const user = await User.findById(userId);
-    if (!user) {
-      logger.warning('Пользователь не найден при создании платежа', { userId });
-      
-      return res.status(404).json({ 
-        success: false, 
-        message: 'Пользователь не найден' 
-      });
-    }
+    // Конвертируем сумму в криптовалюту
+    const cryptoAmount = parseFloat((rubAmount / rates.rub).toFixed(8));
     
-    // Генерация платежного адреса
-    let cryptoAddress;
-    try {
-      cryptoAddress = await blockchainService.generatePaymentAddress(currency);
-      logger.info('Сгенерирован адрес для платежа', { currency, cryptoAddress });
-    } catch (addrError) {
-      logger.error('Ошибка при генерации адреса платежа', addrError, { currency });
-      
-      return res.status(500).json({
-        success: false,
-        message: 'Не удалось сгенерировать адрес для платежа'
-      });
-    }
+    // Генерируем ID платежа
+    const paymentId = `pay_${crypto.randomBytes(10).toString('hex')}`;
     
-    // Конвертация суммы в крипто (в реальности должен использоваться API курса валют)
-    let cryptoAmount;
-    const rates = {
-      eth: 3000, // USD за 1 ETH
-      usdt_erc20: 1, // USD за 1 USDT
-      usdt_trc20: 1, // USD за 1 USDT
-      ton: 5 // USD за 1 TON
-    };
-    
-    // Проверка поддерживаемой валюты
-    if (!rates[currency]) {
-      logger.warning('Неподдерживаемая валюта платежа', { currency });
-      
-      return res.status(400).json({
-        success: false,
-        message: 'Указана неподдерживаемая валюта'
-      });
-    }
-    
-    cryptoAmount = parseFloat((amount / rates[currency]).toFixed(8));
-    
-    // Создаем ID платежа
-    const paymentId = generatePaymentId();
-    
-    // Вычисляем время истечения платежа (30 минут)
+    // Устанавливаем срок действия платежа (30 минут)
     const expiryTime = new Date(Date.now() + 30 * 60 * 1000);
+
+    // Конвертация периода в дни
+    let periodInDays;
+    switch (period) {
+      case 'monthly':
+        periodInDays = 30;
+        break;
+      case 'quarterly':
+        periodInDays = 90;
+        break;
+      case 'yearly':
+        periodInDays = 365;
+        break;
+      default:
+        periodInDays = 30;
+    }
+
+    // Генерируем адрес для оплаты
+    const cryptoAddress = blockchainService.generatePaymentAddress(currency);
     
     // Создаем запись о платеже в базе данных
-    const payment = new Payment({
+    const payment = await PaymentService.create({
       paymentId,
-      userId: user._id,
+      userId: user ? user.id : userId,
       status: 'pending',
-      amount,
+      amount: rubAmount,
       currency,
       cryptoAmount,
       cryptoAddress,
       plan,
-      period,
+      period: periodInDays,
       expiryTime
     });
     
-    try {
-      await payment.save();
-      logger.info('Создан новый платеж', { 
-        paymentId, 
-        userId: user._id, 
-        amount, 
-        currency, 
-        plan, 
-        period 
-      });
-    } catch (dbError) {
-      logger.error('Ошибка при сохранении платежа в БД', dbError, { paymentId });
-      
-      return res.status(500).json({
-        success: false,
-        message: 'Не удалось сохранить платеж в базе данных'
-      });
-    }
+    logger.info('Создан новый платеж', { 
+      paymentId, 
+      userId: user ? user.id : userId, 
+      amount: rubAmount,
+      cryptoAmount,
+      currency,
+      plan, 
+      period 
+    });
     
     // Запускаем проверку платежа
     try {
@@ -163,7 +201,6 @@ router.post('/create', async (req, res) => {
       logger.info('Запущена проверка платежа', { paymentId });
     } catch (verifyError) {
       logger.error('Ошибка при запуске проверки платежа', verifyError, { paymentId });
-      // Не возвращаем ошибку клиенту, так как платеж уже создан
     }
     
     // Отправляем в ответ все необходимые данные
@@ -171,12 +208,13 @@ router.post('/create', async (req, res) => {
       success: true,
       payment: {
         paymentId,
-        amount,
+        amount: rubAmount,
         currency,
         cryptoAmount,
         cryptoAddress,
         plan,
         period,
+        status: 'pending',
         expiryTime
       }
     });
@@ -196,94 +234,306 @@ router.post('/create', async (req, res) => {
 router.get('/status/:paymentId', async (req, res) => {
   try {
     const { paymentId } = req.params;
-    logger.info('Получен запрос на проверку статуса платежа', { paymentId });
     
-    // Ищем платеж в базе данных
-    const payment = await Payment.findOne({ paymentId });
-    
+    const payment = await PaymentService.findOne({ paymentId });
     if (!payment) {
-      logger.warning('Платеж не найден при проверке статуса', { paymentId });
+      return res.status(404).json({ 
+        success: false, 
+        message: 'Платеж не найден' 
+      });
+    }
+
+    // Если платеж завершен, получаем информацию о VPN ключе
+    let vpnKey = null;
+    if (payment.status === 'completed') {
+      logger.info('Получен запрос статуса для завершенного платежа', {
+        paymentId,
+        hasVpnKeyUuid: !!payment.vpnKeyUuid,
+        hasVpnKeyConfig: !!payment.vpnKeyConfig,
+        configType: typeof payment.vpnKeyConfig
+      });
       
+      // Проверяем и форматируем конфигурацию
+      let config = payment.vpnKeyConfig;
+      if (typeof config === 'object') {
+        config = JSON.stringify(config);
+      }
+      
+      // Форматируем объект с данными ключа
+      vpnKey = {
+        uuid: payment.vpnKeyUuid,
+        config: config,
+        createdAt: payment.completedAt,
+        expiresAt: payment.vpnKeyExpires
+      };
+      
+      logger.info('Отправляю ответ с VPN ключом', {
+        paymentId,
+        vpnKeyDetails: {
+          hasUuid: !!vpnKey.uuid,
+          hasConfig: !!vpnKey.config,
+          configType: typeof vpnKey.config,
+          configPreview: vpnKey.config ? vpnKey.config.substring(0, 50) + '...' : null
+        },
+        fullPayment: JSON.stringify(payment, null, 2),
+        fullVpnKey: JSON.stringify(vpnKey, null, 2)
+      });
+    }
+
+    const response = {
+      success: true,
+      payment: {
+        ...payment.toJSON(),
+        vpnKey
+      }
+    };
+
+    logger.info('Финальный ответ клиенту:', {
+      paymentId,
+      response: JSON.stringify(response, null, 2)
+    });
+
+    return res.json(response);
+  } catch (error) {
+    logger.error('Ошибка при получении статуса платежа', error, { 
+      paymentId: req.params.paymentId 
+    });
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Внутренняя ошибка сервера при получении статуса платежа'
+    });
+  }
+});
+
+// API для подтверждения платежа
+router.post('/status/:paymentId/confirm', async (req, res) => {
+  try {
+    const { paymentId } = req.params;
+    
+    // Получаем платеж
+    const payment = await PaymentService.findOne({ paymentId });
+    if (!payment) {
       return res.status(404).json({
         success: false,
         message: 'Платеж не найден'
       });
     }
     
-    // Проверяем, не истек ли срок ожидания платежа
-    const now = new Date();
-    if (payment.status === 'pending' && now > payment.expiryTime) {
-      logger.info('Платеж истек', { paymentId, status: payment.status });
+    // Для ручной оплаты меняем статус на "ожидание проверки"
+    if (payment.currency === 'manual_tinkoff') {
+      await PaymentService.update(paymentId, { status: 'waiting_confirmation' });
       
-      payment.status = 'expired';
-      await payment.save();
+      // Отправляем уведомление админу в Telegram
+      const msg2 = `🔔 <b>Пользователь подтвердил ручной платёж!</b>\n\n` +
+        `ID: ${paymentId}\n` +
+        `Пользователь: ${payment.userId}\n` +
+        `Сумма: ${payment.amount} ₽\n` +
+        `Тариф: ${getPlanName(payment.plan)} (${getPeriodName(payment.period)})\n\n` +
+        `Проверьте поступление средств и подтвердите платёж.`;
+      await sendAdminNotification(msg2, paymentId);
       
-      // Останавливаем таймер проверки, если он существует
-      if (paymentTimers.has(paymentId)) {
-        clearInterval(paymentTimers.get(paymentId));
-        paymentTimers.delete(paymentId);
-        logger.info('Остановлена проверка истекшего платежа', { paymentId });
-      }
+      // Возвращаем обновленный платеж
+      const updatedPayment = await PaymentService.findOne({ paymentId });
+      return res.json({
+        success: true,
+        payment: updatedPayment,
+        message: 'Платеж ожидает проверки администратором'
+      });
     }
     
-    // Если платеж выполнен, возвращаем также информацию о ключе
-    let vpnKey = null;
-    if (payment.status === 'completed' && payment.vpnKeyUuid) {
-      try {
-        vpnKey = await VpnKey.findOne({ uuid: payment.vpnKeyUuid });
-        if (!vpnKey) {
-          logger.warning('VPN ключ не найден для завершенного платежа', { 
-            paymentId, 
-            vpnKeyUuid: payment.vpnKeyUuid 
-          });
-        }
-      } catch (keyError) {
-        logger.error('Ошибка при поиске VPN ключа', keyError, { 
-          paymentId,
-          vpnKeyUuid: payment.vpnKeyUuid
-        });
-      }
-    }
+    // Для других типов оплаты сразу подтверждаем
+    await PaymentService.update(paymentId, { status: 'completed' });
     
-    logger.info('Успешная проверка статуса платежа', { 
-      paymentId, 
-      status: payment.status 
+    // Генерируем VPN ключ
+    const vpnKeyData = await generateVpnKey(payment.plan, payment.period, payment.userId);
+    logger.info('Сгенерирован VPN ключ', { 
+      paymentId,
+      vpnKeyData: {
+        uuid: vpnKeyData.uuid,
+        expires: vpnKeyData.expires,
+        hasConfig: !!vpnKeyData.config
+      }
     });
     
-    return res.json({
+    // Отправляем ключ пользователю
+    await sendVpnKeyToUser(payment, vpnKeyData);
+    
+    // Обновляем платеж с информацией о ключе
+    await PaymentService.update(paymentId, { 
+      vpnKeyUuid: vpnKeyData.uuid,
+      vpnKeyConfig: vpnKeyData.config,
+      vpnKeyExpires: vpnKeyData.expires,
+      status: 'completed',
+      completedAt: new Date()
+    });
+    
+    // Получаем обновленный платеж
+    const updatedPayment = await PaymentService.findOne({ paymentId });
+    
+    // Формируем ответ с ключом
+    const response = {
       success: true,
       payment: {
-        paymentId: payment.paymentId,
-        status: payment.status,
-        amount: payment.amount,
-        currency: payment.currency,
-        cryptoAmount: payment.cryptoAmount,
-        cryptoAddress: payment.cryptoAddress,
-        plan: payment.plan,
-        period: payment.period,
-        expiryTime: payment.expiryTime,
-        completedAt: payment.completedAt,
-        transactionId: payment.transactionId,
-        vpnKeyUuid: payment.vpnKeyUuid
+        ...updatedPayment.toJSON(),
+        vpnKey: {
+          uuid: vpnKeyData.uuid,
+          config: vpnKeyData.config,
+          expires: vpnKeyData.expires
+        }
       },
-      vpnKey: vpnKey ? {
-        uuid: vpnKey.uuid,
-        plan: vpnKey.plan,
-        period: vpnKey.period,
-        created: vpnKey.created,
-        expires: vpnKey.expires,
-        isActive: vpnKey.isActive,
-        config: vpnKey.config
+      message: 'Платеж успешно подтвержден'
+    };
+    
+    logger.info('Отправляю ответ с VPN ключом', {
+      paymentId,
+      hasVpnKey: !!response.payment.vpnKey,
+      vpnKeyDetails: response.payment.vpnKey ? {
+        uuid: response.payment.vpnKey.uuid,
+        hasConfig: !!response.payment.vpnKey.config,
+        configType: typeof response.payment.vpnKey.config
       } : null
     });
+    
+    return res.json(response);
   } catch (error) {
-    logger.error('Необработанная ошибка при проверке статуса платежа', error, { 
-      paymentId: req.params.paymentId 
+    logger.error('Ошибка при подтверждении платежа', error, { 
+      params: req.params,
+      body: req.body 
     });
     
     return res.status(500).json({
       success: false,
-      message: 'Внутренняя ошибка сервера при проверке статуса платежа'
+      message: 'Внутренняя ошибка сервера при подтверждении платежа'
+    });
+  }
+});
+
+// API для подтверждения платежа админом
+router.post('/admin/confirm/:paymentId', async (req, res) => {
+  const { paymentId } = req.params;
+  const { adminToken } = req.body;
+  // <<< Лог входа
+  logger.info(`[Admin Confirm] Вход в роут для paymentId: ${paymentId}`, { body: req.body }); 
+
+  try {
+    // Проверяем токен админа
+    logger.info(`[Admin Confirm] Проверяю токен админа...`, { paymentId });
+    const expectedToken = process.env.ADMIN_TOKEN;
+    if (adminToken !== expectedToken) {
+      logger.warning('[Admin Confirm] Неверный токен админа.', { 
+        paymentId, 
+        receivedToken: adminToken, 
+        expectedTokenSubstring: expectedToken ? expectedToken.substring(0, 3) + '...' : 'null' 
+      });
+      return res.status(403).json({
+        success: false,
+        message: 'Доступ запрещен'
+      });
+    }
+    logger.info(`[Admin Confirm] Токен админа верный.`, { paymentId });
+
+    // Ищем платеж в базе данных
+    logger.info(`[Admin Confirm] Ищу платеж ${paymentId} в БД...`);
+    const payment = await PaymentService.findOne({ paymentId });
+
+    if (!payment) {
+      logger.warning('[Admin Confirm] Платеж не найден.', { paymentId });
+      return res.status(404).json({
+        success: false,
+        message: 'Платеж не найден'
+      });
+    }
+    logger.info(`[Admin Confirm] Платеж ${paymentId} найден.`, { currentStatus: payment.status });
+
+    // Проверяем статус платежа
+    logger.info(`[Admin Confirm] Проверяю статус платежа ${paymentId}... Ожидаемый статус: waiting_confirmation`);
+    if (payment.status !== 'waiting_confirmation') {
+      logger.warning('[Admin Confirm] Платеж не в статусе ожидания подтверждения.', { 
+        paymentId, 
+        status: payment.status 
+      });
+      return res.status(400).json({
+        success: false,
+        message: 'Платеж не требует подтверждения или уже обработан'
+      });
+    }
+    logger.info(`[Admin Confirm] Статус платежа ${paymentId} корректный (waiting_confirmation).`);
+
+    // Генерируем VPN ключ ПЕРЕД сменой статуса
+    logger.info(`[Admin Confirm] Генерирую VPN ключ для ${paymentId}...`);
+    const vpnKeyData = await generateVpnKey(payment.plan, payment.period, payment.userId);
+    logger.info(`[Admin Confirm] Сгенерирован ключ ${vpnKeyData.uuid} для платежа ${paymentId}`);
+
+    // Отправляем ключ пользователю (асинхронно, не блокируем ответ)
+    sendVpnKeyToUser(payment, vpnKeyData).catch(err => {
+      logger.error('[Admin Confirm] Не удалось отправить ключ пользователю (фоновая задача)', err, { paymentId, userId: payment.userId });
+    });
+
+    // ОДНОВРЕМЕННО обновляем статус, UUID ключа и дату завершения
+    const updateData = { 
+      vpnKeyUuid: vpnKeyData.uuid,
+      status: 'completed',
+      completedAt: new Date()
+    };
+    logger.info(`[Admin Confirm] Обновляю платеж ${paymentId} в БД данными:`, { updateData });
+    
+    // Используем PaymentService.update и проверяем результат
+    const updatedRows = await PaymentService.update(paymentId, updateData);
+
+    // Логируем результат обновления
+    logger.info(`[Admin Confirm] Результат выполнения PaymentService.update для ${paymentId}:`, { updatedRows });
+
+    if (updatedRows === 0) {
+        logger.error(`[Admin Confirm] НЕ УДАЛОСЬ обновить платеж ${paymentId} в БД! PaymentService.update вернул 0.`, { paymentId, updateData });
+        // Возвращаем ошибку, так как обновление критично
+        return res.status(500).json({ success: false, message: 'Ошибка при обновлении статуса платежа в БД' });
+    }
+
+    logger.info(`[Admin Confirm] Платеж ${paymentId} успешно обновлен в БД.`);
+    
+    // Получаем САМЫЕ АКТУАЛЬНЫЕ данные платежа ПОСЛЕ обновления
+    logger.info(`[Admin Confirm] Повторно запрашиваю данные платежа ${paymentId} из БД ПОСЛЕ обновления...`);
+    const finalPaymentData = await PaymentService.findByPaymentId(paymentId);
+    // Логируем финальные данные перед отправкой ответа
+    logger.info(`[Admin Confirm] Финальные данные платежа ${paymentId} для ответа:`, { finalPaymentData: JSON.parse(JSON.stringify(finalPaymentData || null)) });
+
+    // Если по какой-то причине платеж не найден после успешного обновления - это ошибка
+    if (!finalPaymentData) {
+        logger.error(`[Admin Confirm] КРИТИЧЕСКАЯ ОШИБКА: Платеж ${paymentId} не найден ПОСЛЕ успешного PaymentService.update!`, { paymentId });
+        return res.status(500).json({ success: false, message: 'Внутренняя ошибка сервера после обновления платежа' });
+    }
+
+    // Формируем ключ для ответа АДМИНУ (фронтенд получит его через /status)
+    // Используем данные из vpnKeyData, т.к. они точно есть
+    const formattedKeyForAdminResponse = {
+      uuid: vpnKeyData.uuid,
+      config: typeof vpnKeyData.config === 'string' 
+        ? vpnKeyData.config 
+        : generateVpnImportLink(vpnKeyData.config),
+      expires: vpnKeyData.expires
+    };
+    
+    logger.info(`[Admin Confirm] Платеж ${paymentId} успешно подтвержден админом. Отправляю ответ с актуальными данными.`);
+    
+    return res.json({
+      success: true,
+      // Возвращаем finalPaymentData, которая была получена ПОСЛЕ обновления
+      payment: { 
+        ...JSON.parse(JSON.stringify(finalPaymentData)), 
+        vpnKey: formattedKeyForAdminResponse // Добавляем ключ для информации админа
+      },
+      message: 'Платеж успешно подтвержден'
+    });
+  } catch (error) {
+    logger.error('[Admin Confirm] Глобальная ошибка при подтверждении платежа админом', error, { 
+      params: req.params,
+      body: req.body 
+    });
+    
+    return res.status(500).json({
+      success: false,
+      message: 'Внутренняя ошибка сервера при подтверждении платежа'
     });
   }
 });
@@ -303,7 +553,7 @@ router.get('/history/:userId', async (req, res) => {
     }
     
     // Получаем историю платежей пользователя
-    const payments = await Payment.find({ userId }).sort({ createdAt: -1 });
+    const payments = await PaymentService.find({ userId }).sort({ createdAt: -1 });
     
     // Форматируем данные для ответа
     const formattedPayments = payments.map(payment => ({
@@ -332,158 +582,94 @@ router.get('/history/:userId', async (req, res) => {
   }
 });
 
-// Функция для периодической проверки статуса платежа
-async function startPaymentVerification(paymentId) {
-  try {
-    logger.info('Запуск проверки платежа', { paymentId });
-    
-    // Проверяем, нет ли уже активного таймера для этого платежа
-    if (paymentTimers.has(paymentId)) {
-      clearInterval(paymentTimers.get(paymentId));
-      logger.info('Перезапуск существующего таймера проверки платежа', { paymentId });
-    }
-    
-    // Создаем интервал для периодической проверки платежа
-    const checkInterval = setInterval(async () => {
-      try {
-        const payment = await Payment.findOne({ paymentId });
-        
-        if (!payment) {
-          logger.warning('Платеж не найден при автоматической проверке', { paymentId });
-          clearInterval(checkInterval);
-          paymentTimers.delete(paymentId);
-          return;
-        }
-        
-        // Если платеж уже завершен или истек, останавливаем проверку
-        if (payment.status !== 'pending') {
-          logger.info('Платеж больше не в ожидании, останавливаем проверку', { 
-            paymentId, 
-            status: payment.status 
-          });
-          clearInterval(checkInterval);
-          paymentTimers.delete(paymentId);
-          return;
-        }
-        
-        // Проверяем, не истек ли срок ожидания платежа
-        const now = new Date();
-        if (now > payment.expiryTime) {
-          logger.info('Платеж истек во время проверки', { paymentId });
-          payment.status = 'expired';
-          await payment.save();
-          clearInterval(checkInterval);
-          paymentTimers.delete(paymentId);
-          return;
-        }
-        
-        // Проверяем статус платежа в блокчейне (эмуляция)
-        // В реальном приложении здесь должен быть запрос к блокчейн-API
-        const blockchainStatus = await blockchainService.checkPaymentStatus(
-          payment.cryptoAddress, 
-          payment.cryptoAmount, 
-          payment.currency
-        );
-        
-        logger.info('Результат проверки блокчейна', { 
-          paymentId, 
-          status: blockchainStatus.status 
-        });
-        
-        if (blockchainStatus.status === 'completed') {
-          // Платеж подтвержден, обновляем статус
-          payment.status = 'completed';
-          payment.completedAt = new Date();
-          payment.transactionId = blockchainStatus.transactionId;
-          
-          // Генерируем VPN ключ
-          try {
-            const vpnKey = await generateVpnKey(payment.plan, payment.period, payment.userId);
-            payment.vpnKeyUuid = vpnKey.uuid;
-            logger.info('Создан VPN ключ для платежа', { 
-              paymentId, 
-              vpnKeyUuid: vpnKey.uuid 
-            });
-            
-            // Отправляем уведомление пользователю
-            await sendVpnKeyToUser(payment, vpnKey);
-          } catch (keyError) {
-            logger.error('Ошибка при генерации VPN ключа', keyError, { paymentId });
-          }
-          
-          await payment.save();
-          
-          // Останавливаем дальнейшие проверки
-          clearInterval(checkInterval);
-          paymentTimers.delete(paymentId);
-        }
-      } catch (checkError) {
-        logger.error('Ошибка при проверке статуса платежа', checkError, { paymentId });
-      }
-    }, 60000); // Проверка каждую минуту
-    
-    // Сохраняем интервал в хранилище
-    paymentTimers.set(paymentId, checkInterval);
-  } catch (error) {
-    logger.error('Ошибка при запуске проверки платежа', error, { paymentId });
-    throw error;
-  }
-}
-
 // Функция для генерации VPN ключа
 async function generateVpnKey(plan, period, userId) {
   try {
     logger.info('Генерация VPN ключа', { plan, period, userId });
     
-    // В реальном приложении здесь должна быть интеграция с V2Ray API
-    const uuid = 'vpn_' + crypto.randomBytes(10).toString('hex');
     const now = new Date();
     
-    // Определяем срок действия ключа в месяцах
-    let periodMonths;
-    if (typeof period === 'number') {
-      periodMonths = period;
-    } else if (period === 'yearly') {
-      periodMonths = 12;
-    } else if (period === 'quarterly') {
-      periodMonths = 3;
+    // Используем фиксированный UUID для всех ключей (как на сервере)
+    const uuid = '62bc8aba-1979-4918-85ca-0e2eea1df559';
+    // Генерируем уникальный internal_id для идентификации ключа в базе
+    const internal_id = crypto.randomUUID();
+    
+    // Определяем срок действия ключа
+    let expiresAt = new Date(now);
+    
+    if (plan === 'trial') {
+      // Для пробного периода - строго 1 час
+      expiresAt.setHours(expiresAt.getHours() + 1);
+      logger.info('Создан пробный ключ на 1 час', { 
+        createdAt: now, 
+        expiresAt 
+      });
     } else {
-      periodMonths = 1; // По умолчанию 1 месяц
+      // Для остальных тарифов
+      let days;
+      if (typeof period === 'number') {
+        days = period;
+      } else {
+        switch (period) {
+          case 'yearly':
+            days = 365;
+            break;
+          case 'quarterly':
+            days = 90;
+            break;
+          case 'monthly':
+            days = 30;
+            break;
+          default:
+            days = 30; // По умолчанию 1 месяц
+        }
+      }
+      
+      // Для премиум тарифа добавляем бонусные дни
+      if (plan === 'premium') {
+        days += 30; // +30 дней бонус
+      }
+      
+      expiresAt.setDate(expiresAt.getDate() + days);
+      logger.info('Создан ключ с периодом действия', { 
+        plan, 
+        days,
+        createdAt: now,
+        expiresAt 
+      });
     }
-    
-    // Вычисляем дату истечения
-    const expires = new Date(now);
-    expires.setMonth(expires.getMonth() + periodMonths);
-    
-    // Создаем конфигурацию для ключа
-    const config = {
-      server: process.env.VPN_SERVER_HOST || '134.209.91.29',
-      port: 443,
-      protocol: 'vless',
-      uuid: uuid,
-      tls: true,
-      network: 'ws',
-      path: '/vpn'
-    };
+
+    // Генерируем конфигурационную строку в формате VLESS с корректными настройками
+    const config = VpnKey._generateVpnConfig(plan);
     
     // Создаем запись о ключе в базе данных
-    const vpnKey = new VpnKey({
+    const vpnKey = await VpnKey.create({
+      internal_id,
       uuid,
-      userId,
+      userId: userId || null,
       plan,
-      period: periodMonths,
-      created: now,
-      expires,
-      isActive: true,
-      config
+      config,
+      expiresAt,
+      ip: null
     });
     
-    await vpnKey.save();
-    logger.info('VPN ключ успешно создан', { uuid });
+    // Запускаем таймер для деактивации ключа
+    VpnKey.scheduleDeactivation(uuid, expiresAt);
     
-    return vpnKey;
+    logger.info('VPN ключ успешно создан', { 
+      internal_id,
+      uuid,
+      plan,
+      expiresAt: expiresAt.toISOString()
+    });
+    
+    return {
+      uuid: vpnKey.uuid,
+      config: config,
+      expires: vpnKey.expiresAt
+    };
   } catch (error) {
-    logger.error('Ошибка при генерации VPN ключа', error, { plan, period, userId });
+    logger.error('Ошибка при генерации VPN ключа', { error: error.message });
     throw error;
   }
 }
@@ -495,6 +681,14 @@ async function sendVpnKeyToUser(paymentData, vpnKeyData) {
       paymentId: paymentData.paymentId,
       userId: paymentData.userId
     });
+    
+    // Если это анонимный пользователь, просто логируем это и возвращаемся
+    if (paymentData.userId === 'anonymous-user') {
+      logger.info('Платеж от анонимного пользователя, пропускаем отправку в Telegram', {
+        paymentId: paymentData.paymentId
+      });
+      return;
+    }
     
     // Получаем данные пользователя
     const user = await User.findById(paymentData.userId);
@@ -515,54 +709,224 @@ async function sendVpnKeyToUser(paymentData, vpnKeyData) {
         // Отправляем сообщение с деталями ключа
         await bot.sendMessage(
           user.telegramId,
-          `🎉 *Ваш VPN-ключ готов!* 🎉\n\n`+
-          `🔑 *UUID:* \`${vpnKeyData.uuid}\`\n`+
-          `📆 *Действует до:* ${vpnKeyData.expires.toLocaleDateString()}\n`+
-          `📊 *Тариф:* ${vpnKeyData.plan}\n\n`+
+          `🎉 <b>Ваш VPN-ключ готов!</b> 🎉\n\n`+
+          `🔑 <b>UUID:</b> <code>${vpnKeyData.uuid}</code>\n`+
+          `📆 <b>Действует до:</b> ${new Date(vpnKeyData.expires).toLocaleDateString()}\n`+
+          `📊 <b>Тариф:</b> ${vpnKeyData.plan}\n\n`+
           `Для подключения используйте одно из предложенных приложений и импортируйте конфигурацию по ссылке ниже.\n\n`+
-          `*Инструкция по настройке:*\n`+
+          `<b>Инструкция по настройке:</b>\n`+
           `1. Установите приложение V2Ray или Matsuri\n`+
           `2. Откройте приложение и нажмите "Импорт конфигурации"\n`+
           `3. Используйте данные ниже или отсканируйте QR-код\n\n`+
-          `*Ссылка для импорта:*\n\`${importLink}\``,
-          { parse_mode: 'Markdown' }
+          `<b>Ссылка для импорта:</b>\n<code>${importLink}</code>`,
+          { parse_mode: 'HTML' }
         );
         
         // Отправляем QR-код для быстрой настройки
-        // В реальном приложении здесь должна быть генерация QR-кода
-        logger.info('Успешно отправлено сообщение в Telegram', { 
-          telegramId: user.telegramId 
-        });
-      } catch (telegramError) {
-        logger.error('Ошибка при отправке сообщения в Telegram', telegramError, { 
-          telegramId: user.telegramId 
+        try {
+          // Формируем конфигурационную строку для QR-кода
+          const uuid = '62bc8aba-1979-4918-85ca-0e2eea1df559';
+          const host = 'vpn.kittypoopvpn.ru';
+          const port = '4843';
+          const encryption = 'none';
+          const security = 'tls';
+          const type = 'ws';
+          const path = '/vless';
+          const flow = 'none';
+          const alpn = 'h2,h3,http/1.1';
+          const configName = 'KittyPoopVPN_Trial';
+
+          const configString = `vless://${uuid}@${host}:${port}?encryption=${encryption}&security=${security}&type=${type}&host=${host}&path=${encodeURIComponent(path)}&flow=${flow}&alpn=${encodeURIComponent(alpn)}#${encodeURIComponent(configName)}`;
+
+          // Генерируем QR-код через API с правильным размером и уровнем коррекции ошибок
+          const qrCodeUrl = `https://api.qrserver.com/v1/create-qr-code/?size=512x512&ecc=H&data=${encodeURIComponent(configString)}`;
+          
+          // Отправляем QR-код через Telegram
+          await bot.sendPhoto(user.telegramId, qrCodeUrl, {
+            caption: `🔄 <b>QR-код для быстрой настройки VPN</b>\n\n` +
+                    `Отсканируйте его в приложении V2rayNG или Matsuri для быстрого подключения.\n\n` +
+                    `Конфигурация:\n` +
+                    `<code>${configString}</code>\n\n` +
+                    `UUID: <code>${uuid}</code>`,
+            parse_mode: 'HTML'
+          });
+          
+          logger.info('QR-код успешно отправлен пользователю', { 
+            telegramId: user.telegramId 
+          });
+        } catch (qrError) {
+          logger.error('Ошибка при отправке QR-кода', qrError, { 
+            telegramId: user.telegramId 
+          });
+        }
+      } catch (error) {
+        logger.error('Ошибка при отправке сообщения в Telegram', error, {
+          telegramId: user.telegramId
         });
       }
-    } else {
-      logger.warning('У пользователя отсутствует Telegram ID', { 
-        userId: paymentData.userId 
-      });
     }
   } catch (error) {
-    logger.error('Ошибка при отправке VPN ключа пользователю', error, { 
-      paymentId: paymentData.paymentId 
+    logger.error('Ошибка при отправке VPN ключа пользователю', error, {
+      paymentId: paymentData.paymentId,
+      userId: paymentData.userId
     });
   }
 }
 
-// Функция для генерации ссылки импорта VPN конфигурации
+// Генерируем ссылку для импорта VPN-конфигурации
 function generateVpnImportLink(config) {
   try {
-    // Формируем строку конфигурации в формате для импорта
-    const configStr = `vless://${config.uuid}@${config.server}:${config.port}?security=tls&type=${config.network}&path=${config.path}#KittyPoopVPN`;
+    // Если config это строка, возвращаем её как есть, так как она уже в правильном формате
+    if (typeof config === 'string') {
+      return config;
+    }
     
-    return configStr;
+    // Создаем строку для VLESS протокола в формате, подходящем для большинства клиентов
+    const uuid = typeof config === 'object' ? config.uuid : 'vpn_' + crypto.randomBytes(10).toString('hex');
+    const server = typeof config === 'object' ? config.server : 'vpn.kittypoop.com';
+    const port = typeof config === 'object' ? config.port : '443';
+    const protocol = typeof config === 'object' ? config.protocol : 'vmess';
+    
+    // Базовый формат для vmess: vmess://base64(json-config)
+    const vmessConfig = {
+      v: "2",
+      ps: "Kitty Poop VPN",
+      add: server,
+      port: port,
+      id: uuid,
+      aid: "0",
+      net: "ws",
+      type: "none",
+      host: "",
+      path: "/vpn",
+      tls: "tls",
+      sni: "vpn.kittypoop.com",
+      scy: "auto"
+    };
+    
+    // Преобразуем объект в строку JSON, затем в base64
+    const base64Config = Buffer.from(JSON.stringify(vmessConfig)).toString('base64');
+    return `${protocol}://${base64Config}`;
   } catch (error) {
-    logger.error('Ошибка при генерации ссылки для импорта VPN', error, { 
-      config 
-    });
-    return '';
+    logger.error('Ошибка при генерации ссылки импорта VPN', { error: error.message });
+    return 'vmess://error-generating-config'; // Возвращаем заметную ошибку
   }
 }
 
-module.exports = router; 
+// Функция для получения названия тарифа
+function getPlanName(plan) {
+  switch(plan) {
+    case 'basic': return 'Пробный месяц';
+    case 'standard': return 'Базовичок';
+    case 'premium': return 'Наш котяра';
+    default: return plan;
+  }
+}
+
+// Функция для получения названия периода
+function getPeriodName(period) {
+  switch(period) {
+    case 'monthly': return 'месяц';
+    case 'quarterly': return '3 месяца';
+    case 'yearly': return 'год';
+    default: return period;
+  }
+}
+
+// Функция для планирования деактивации ключа
+function scheduleKeyDeactivation(internal_id, expiresAt) {
+  // Очищаем существующий таймер, если есть
+  if (deactivationTimers.has(internal_id)) {
+    clearTimeout(deactivationTimers.get(internal_id));
+    deactivationTimers.delete(internal_id);
+  }
+  
+  // Вычисляем время до деактивации
+  const now = new Date();
+  const timeUntilDeactivation = expiresAt.getTime() - now.getTime();
+  
+  if (timeUntilDeactivation <= 0) {
+    // Если время уже истекло, деактивируем немедленно
+    deactivateKey(internal_id);
+    return;
+  }
+  
+  // Устанавливаем таймер на деактивацию
+  const timer = setTimeout(async () => {
+    await deactivateKey(internal_id);
+  }, timeUntilDeactivation);
+  
+  // Сохраняем таймер
+  deactivationTimers.set(internal_id, timer);
+  
+  logger.info('Запланирована деактивация ключа', {
+    internal_id,
+    expiresAt: expiresAt.toISOString(),
+    timeUntilDeactivation: Math.floor(timeUntilDeactivation / 1000) + ' seconds'
+  });
+}
+
+// Функция деактивации ключа
+async function deactivateKey(internal_id) {
+  try {
+    // Обновляем статус ключа в базе данных
+    await VpnKey.update(internal_id, { is_active: false });
+    
+    // Очищаем таймер
+    if (deactivationTimers.has(internal_id)) {
+      clearTimeout(deactivationTimers.get(internal_id));
+      deactivationTimers.delete(internal_id);
+    }
+    
+    logger.info('Ключ деактивирован', { internal_id });
+    
+    // Здесь можно добавить дополнительную логику
+    // например, отправку уведомления пользователю о деактивации
+  } catch (error) {
+    logger.error('Ошибка при деактивации ключа', { 
+      internal_id, 
+      error: error.message 
+    });
+  }
+}
+
+// При запуске сервера - восстанавливаем таймеры для всех активных ключей
+async function restoreDeactivationTimers() {
+  try {
+    // Получаем все активные ключи
+    const activeKeys = await VpnKey.findActive();
+    
+    for (const key of activeKeys) {
+      const expiresAt = new Date(key.expires);
+      const now = new Date();
+      
+      // Если срок действия уже истек - деактивируем
+      if (expiresAt <= now) {
+        await deactivateKey(key.internal_id);
+        continue;
+      }
+      
+      // Иначе планируем деактивацию
+      scheduleKeyDeactivation(key.internal_id, expiresAt);
+    }
+    
+    logger.info('Восстановлены таймеры деактивации', {
+      activeKeysCount: activeKeys.length
+    });
+  } catch (error) {
+    logger.error('Ошибка при восстановлении таймеров деактивации', {
+      error: error.message
+    });
+  }
+}
+
+// Экспортируем router в качестве основного объекта для Express
+const routerExport = router;
+
+// Добавляем нужные функции к экспортируемому объекту
+routerExport.generateVpnKey = generateVpnKey;
+routerExport.sendVpnKeyToUser = sendVpnKeyToUser;
+routerExport.generateVpnImportLink = generateVpnImportLink;
+
+// Экспортируем только router с добавленными функциями
+module.exports = routerExport; 

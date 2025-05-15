@@ -2,7 +2,6 @@ import React from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { Link } from 'react-router-dom';
-import KeyGenerator from '../components/KeyGenerator';
 import TrialKeyGenerator from '../components/TrialKeyGenerator';
 
 const PageContainer = styled.div`
@@ -17,7 +16,7 @@ const HeroSection = styled.section`
   justify-content: center;
   text-align: center;
   padding: 100px 20px 50px;
-  background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f14 80%);
+  background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f14 80%); /* Фон РАСкомментирован */
   position: relative;
   overflow: hidden;
 

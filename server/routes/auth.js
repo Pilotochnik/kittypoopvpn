@@ -1,20 +1,35 @@
 const express = require('express');
 const crypto = require('crypto');
-const TelegramBot = require('node-telegram-bot-api');
 const User = require('../models/User');
 require('dotenv').config();
+const bcrypt = require('bcryptjs');
+const jwt = require('jsonwebtoken');
+
+// Гарантируем, что глобальная карта токенов всегда определена (до router)
+if (!global.authTokens) global.authTokens = new Map();
 
 const router = express.Router();
 
-// Инициализация бота
+// CORS middleware для поддержки нескольких origin
+router.use((req, res, next) => {
+  const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001'];
+  const origin = req.headers.origin;
+  if (allowedOrigins.includes(origin)) {
+    res.setHeader('Access-Control-Allow-Origin', origin);
+    res.setHeader('Access-Control-Allow-Credentials', 'true');
+  }
+  res.setHeader('Access-Control-Allow-Methods', 'GET,POST,PUT,DELETE,OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type,Authorization');
+  if (req.method === 'OPTIONS') {
+    return res.sendStatus(200);
+  }
+  next();
+});
+
 const token = process.env.TELEGRAM_BOT_TOKEN || '7651266107:AAEEPCBB9CvPOfY9H3vjENOiR2q4jWU-Iik';
-// Получаем первую часть токена для проверки хэша
 const botTokenFirstPart = token.split(':')[0] || '7651266107';
 
-const bot = new TelegramBot(token, { polling: true });
-
-// Хранилище токенов авторизации (временное, до сохранения пользователя в БД)
-const authTokens = new Map();
+const JWT_SECRET = process.env.JWT_SECRET || 'supersecretjwt';
 
 // Генерация хэша для данных пользователя Telegram
 const generateTelegramHash = (userData) => {
@@ -35,43 +50,110 @@ const generateTelegramHash = (userData) => {
               .digest('hex');
 };
 
-// Обработка команды /start с токеном авторизации
-bot.onText(/\/start auth_(.+)/, (msg, match) => {
-  const chatId = msg.chat.id;
-  const authToken = match[1];
-  
-  console.log(`Получен запрос на авторизацию с токеном: ${authToken}`);
-  
-  // Сообщаем пользователю, что авторизация в процессе
-  bot.sendMessage(chatId, 'Выполняю авторизацию...');
-  
-  // Формируем данные пользователя для отправки в приложение
-  const userData = {
-    id: msg.from.id,
-    first_name: msg.from.first_name || '',
-    last_name: msg.from.last_name || '',
-    username: msg.from.username || '',
-    photo_url: '', // Можно получить через дополнительный запрос
-    auth_date: Math.floor(Date.now() / 1000)
-  };
-  
-  // Генерируем хэш для данных
-  userData.hash = generateTelegramHash(userData);
-  
-  // Сохраняем данные пользователя с привязкой к токену
-  authTokens.set(authToken, userData);
-  console.log(`Сохранены данные пользователя для токена ${authToken}:`, userData);
-  
-  // Имитация успешной авторизации
-  setTimeout(() => {
-    bot.sendMessage(chatId, 'Вы успешно авторизованы! Вернитесь в приложение.');
-  }, 1000);
+// Маршрут для проверки статуса и финализации Telegram авторизации
+router.get('/telegram/status', async (req, res) => {
+  // Добавляем заголовки для предотвращения кеширования этого ответа
+  res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+  res.set('Pragma', 'no-cache');
+  res.set('Expires', '0');
+
+  const { token } = req.query;
+  if (!token) {
+    return res.status(400).json({ success: false, message: 'Токен не предоставлен' });
+  }
+
+  console.log(`[API_TELEGRAM_STATUS_FINALIZED] Запрос на проверку и финализацию для токена: ${token}`);
+
+  if (global.authTokens && global.authTokens.has(token)) {
+    const userDataFromBot = global.authTokens.get(token); // Это данные, сохраненные ботом
+    
+    if (typeof userDataFromBot === 'object' && userDataFromBot !== null && userDataFromBot.id) {
+      console.log(`[API_TELEGRAM_STATUS_FINALIZED] Токен ${token} валиден, данные от бота:`, userDataFromBot);
+      try {
+        // Ищем пользователя в базе по Telegram ID
+        let user = await User.findOne({ telegramId: userDataFromBot.id });
+        
+        if (!user) {
+          user = await User.create({
+            telegramId: userDataFromBot.id,
+            firstName: userDataFromBot.first_name,
+            lastName: userDataFromBot.last_name,
+            username: userDataFromBot.username,
+            authDate: new Date(userDataFromBot.auth_date * 1000)
+          });
+          console.log(`[API_TELEGRAM_STATUS_FINALIZED] Создан новый пользователь для Telegram ID ${userDataFromBot.id}`);
+        } else {
+          user = await User.update(user.id, { // Предполагаем, что User.update возвращает обновленного пользователя
+            firstName: userDataFromBot.first_name,
+            lastName: userDataFromBot.last_name,
+            username: userDataFromBot.username,
+            lastLogin: new Date()
+          });
+          console.log(`[API_TELEGRAM_STATUS_FINALIZED] Обновлены данные пользователя с Telegram ID ${userDataFromBot.id}`);
+        }
+        
+        // Удаляем токен после использования
+        global.authTokens.delete(token);
+        console.log(`[API_TELEGRAM_STATUS_FINALIZED] Токен ${token} удален.`);
+        
+        // Генерируем JWT
+        const jwtToken = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+
+        return res.json({ 
+          success: true, 
+          user: { // Убедимся, что возвращаем все нужные поля для AuthContext
+            id: user.id,
+            telegramId: user.telegramId,
+            firstName: user.firstName,
+            lastName: user.lastName,
+            username: user.username,
+            email: user.email // Добавим email, если он есть и нужен
+          },
+          token: jwtToken
+        });
+
+      } catch (error) {
+        console.error('[API_TELEGRAM_STATUS_FINALIZED] Ошибка при работе с БД или генерации JWT:', error);
+        // Не удаляем токен в случае ошибки, чтобы дать шанс на повторную попытку (хотя фронт сейчас этого не делает)
+        return res.status(500).json({ 
+          success: false, 
+          message: 'Внутренняя ошибка сервера при обработке авторизации'
+        });
+      }
+    } else {
+      console.log(`[API_TELEGRAM_STATUS_FINALIZED] Токен ${token} найден, но данные пользователя (userData) некорректны или еще не связаны.`);
+      return res.json({ success: false, status: 'pending', message: 'Ожидание корректных данных от Telegram-бота' });
+    }
+  } else {
+    console.log(`[API_TELEGRAM_STATUS_FINALIZED] Токен ${token} не найден или уже использован/истек.`);
+    return res.json({ success: false, status: 'pending', message: 'Токен недействителен или сессия истекла.' });
+  }
 });
 
-// Обработка обычной команды /start
-bot.onText(/^\/start$/, (msg) => {
-  const chatId = msg.chat.id;
-  bot.sendMessage(chatId, 'Привет! Я бот для авторизации в приложении KittyPoopVPN. Используйте кнопку "Войти через Telegram" на сайте для авторизации.');
+// Добавляем эндпоинт verify перед маршрутом с параметром
+router.get('/verify', authMiddleware, (req, res) => {
+  return res.status(200).json({ success: true });
+});
+
+// Получить профиль пользователя
+router.get('/me', authMiddleware, async (req, res) => {
+  try {
+    console.log('Запрос профиля для id:', req.user.id);
+    const user = await User.findById(req.user.id);
+    if (!user) {
+      console.log('Пользователь не найден по id:', req.user.id);
+      return res.status(404).json({ error: 'Пользователь не найден' });
+    }
+    return res.json({
+      id: user.id,
+      firstName: user.firstName,
+      lastName: user.lastName,
+      username: user.username,
+      telegramId: user.telegramId
+    });
+  } catch (e) {
+    return res.status(500).json({ error: 'Ошибка получения профиля' });
+  }
 });
 
 // API для получения данных пользователя по токену
@@ -79,8 +161,8 @@ router.get('/:token', async (req, res) => {
   const { token } = req.params;
   console.log(`Получен запрос на проверку токена: ${token}`);
   
-  if (authTokens.has(token)) {
-    const userData = authTokens.get(token);
+  if (global.authTokens && global.authTokens.has(token)) {
+    const userData = global.authTokens.get(token);
     console.log(`Найдены данные пользователя для токена ${token}:`, userData);
     
     try {
@@ -89,38 +171,42 @@ router.get('/:token', async (req, res) => {
       
       // Если пользователь не найден, создаем нового
       if (!user) {
-        user = new User({
+        user = await User.create({
           telegramId: userData.id,
           firstName: userData.first_name,
           lastName: userData.last_name,
           username: userData.username,
           authDate: new Date(userData.auth_date * 1000)
         });
-        await user.save();
         console.log(`Создан новый пользователь для Telegram ID ${userData.id}`);
       } else {
         // Обновляем данные пользователя
-        user.firstName = userData.first_name;
-        user.lastName = userData.last_name;
-        user.username = userData.username;
-        user.lastLogin = new Date();
-        await user.save();
+        user = await User.update(user.id, {
+          firstName: userData.first_name,
+          lastName: userData.last_name,
+          username: userData.username,
+          lastLogin: new Date()
+        });
         console.log(`Обновлены данные пользователя с Telegram ID ${userData.id}`);
       }
       
       // Удаляем токен после использования
-      authTokens.delete(token);
+      global.authTokens.delete(token);
       
-      // Отправляем успешный ответ с данными пользователя
+      // Генерируем JWT для пользователя, вошедшего через Telegram
+      const jwtToken = jwt.sign({ id: user.id, email: user.email }, JWT_SECRET, { expiresIn: '7d' });
+
+      // Отправляем успешный ответ с данными пользователя и JWT токеном
       return res.json({ 
         success: true, 
         user: {
-          id: user._id,
+          id: user.id,
           telegramId: user.telegramId,
           firstName: user.firstName,
           lastName: user.lastName,
           username: user.username
-        }
+        },
+        token: jwtToken // Добавляем JWT токен в ответ
       });
     } catch (error) {
       console.error('Ошибка при сохранении/обновлении пользователя:', error);
@@ -155,7 +241,6 @@ router.get('/user/:userId', async (req, res) => {
         firstName: user.firstName,
         lastName: user.lastName,
         username: user.username,
-        email: user.email,
         createdAt: user.createdAt
       }
     });
@@ -166,6 +251,51 @@ router.get('/user/:userId', async (req, res) => {
       message: 'Внутренняя ошибка сервера при получении данных пользователя'
     });
   }
+});
+
+// Middleware для проверки JWT
+function authMiddleware(req, res, next) {
+  const authHeader = req.headers.authorization;
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ error: 'Требуется авторизация' });
+  }
+  const token = authHeader.split(' ')[1];
+  try {
+    const payload = jwt.verify(token, JWT_SECRET);
+    req.user = payload;
+    next();
+  } catch (e) {
+    return res.status(401).json({ error: 'Недействительный токен' });
+  }
+}
+
+// Генерация ссылки для авторизации через Telegram-бота
+router.get('/telegram/auth', (req, res) => {
+  const authToken = crypto.randomBytes(16).toString('hex');
+  const telegramUrl = `https://t.me/Kittypoopvpn_bot?start=auth_${authToken}`;
+  if (!global.authTokens) global.authTokens = new Map();
+  global.authTokens.set(authToken, { status: 'pending' });
+  res.json({ success: true, telegramUrl, authToken });
+});
+
+// Инициализация токена (вызывается фронтом сразу после генерации)
+router.post('/telegram/init', (req, res) => {
+  const { token } = req.body;
+  if (!token) return res.status(400).json({ success: false, message: 'Нет токена' });
+  if (!global.authTokens) global.authTokens = new Map();
+  global.authTokens.set(token, { status: 'pending' });
+  res.json({ success: true });
+});
+
+// Callback от Telegram-бота (бот присылает userData и token)
+router.post('/telegram/callback', (req, res) => {
+  const { token, ...userData } = req.body;
+  if (!token || !global.authTokens || !global.authTokens.has(token)) {
+    return res.status(400).json({ success: false, message: 'Неверный или истекший токен авторизации' });
+  }
+  // Сохраняем userData напрямую!
+  global.authTokens.set(token, userData);
+  res.json({ success: true });
 });
 
 module.exports = router; 

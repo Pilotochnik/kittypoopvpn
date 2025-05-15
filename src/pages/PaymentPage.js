@@ -1,4 +1,5 @@
-import React, { useState, useEffect } from 'react';
+// eslint-disable-next-line no-unused-vars
+import React, { useState, useEffect, useCallback } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
@@ -151,28 +152,95 @@ const PaymentPage = () => {
   
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState(null);
-  const [step, setStep] = useState('auth'); // Начинаем с авторизации
+  const [step, setStep] = useState('auth');
   const [payment, setPayment] = useState(null);
   const [showQRModal, setShowQRModal] = useState(false);
   const [qrValue, setQrValue] = useState('');
+  // eslint-disable-next-line no-unused-vars
+  const [isPolling, setIsPolling] = useState(false);
   
   const searchParams = new URLSearchParams(location.search);
   const planParam = searchParams.get('plan') || 'standard';
   const periodParam = searchParams.get('period') || 'monthly';
-  const paymentIdParam = searchParams.get('paymentId');
+  const paymentId = searchParams.get('paymentId');
   
+  // Эффект для загрузки платежа при монтировании
   useEffect(() => {
-    // Если пользователь уже авторизован, переходим к выбору криптовалюты
-    if (user) {
+    if (user && !paymentId) {
       setStep('select-currency');
     }
     
-    // Если есть ID платежа в URL, загружаем информацию о нем
-    if (paymentIdParam) {
-      loadPayment(paymentIdParam);
+    if (paymentId) {
+      loadPayment(paymentId);
     }
-  }, [paymentIdParam, user]);
-  
+
+    // Очищаем все интервалы при размонтировании
+    return () => {
+      if (window._paymentPollingInterval) {
+        clearInterval(window._paymentPollingInterval);
+        window._paymentPollingInterval = null;
+      }
+    };
+  }, [paymentId, user]);
+
+  // Эффект для управления опросом статуса
+  useEffect(() => {
+    let pollInterval = null;
+    const controller = new AbortController();
+
+    const pollStatus = async () => {
+      if (!payment || !paymentId) return;
+
+      try {
+        const response = await fetch(`/api/payment/status/${paymentId}`, {
+          signal: controller.signal
+        });
+        
+        if (!response.ok) {
+          throw new Error('Ошибка при получении статуса платежа');
+        }
+        
+        const data = await response.json();
+        console.log('Получены данные платежа:', {
+          status: data.payment?.status,
+          vpnKey: data.payment?.vpnKey,
+          hasVpnKey: !!data.payment?.vpnKey,
+          vpnKeyDetails: data.payment?.vpnKey ? {
+            uuid: data.payment.vpnKey.uuid,
+            hasConfig: !!data.payment.vpnKey.config,
+            configType: typeof data.payment.vpnKey.config,
+            configPreview: data.payment.vpnKey.config ? data.payment.vpnKey.config.substring(0, 50) + '...' : null
+          } : null,
+          fullPayment: JSON.stringify(data.payment, null, 2)
+        });
+        
+        setPayment(data.payment);
+      } catch (error) {
+        console.error('Ошибка при получении статуса:', error);
+      }
+    };
+
+    // Запускаем опрос только если есть активный платеж в ожидании
+    if (payment && ['pending', 'waiting_confirmation'].includes(payment.status)) {
+      // Первая проверка
+      pollStatus();
+      
+      // Запускаем интервал только если его еще нет
+      if (!pollInterval) {
+        pollInterval = setInterval(pollStatus, 5000);
+      }
+    }
+
+    // Очистка при размонтировании
+    return () => {
+      controller.abort();
+      if (pollInterval) {
+        clearInterval(pollInterval);
+        pollInterval = null;
+      }
+    };
+  }, [payment, paymentId]);
+
   const loadPayment = async (paymentId) => {
     try {
       setLoading(true);
@@ -198,12 +266,20 @@ const PaymentPage = () => {
       
       // Получаем ID пользователя из объекта пользователя или используем anonymous-user
       const userId = user?.id || 'anonymous-user';
-      
+
+      // --- КОРРЕКТНЫЙ РАСЧЁТ СУММЫ ---
+      let amount = 500; // стандартный по умолчанию
+      if (planParam === 'basic') amount = 200; // Пробный месяц - всегда 200р 
+      if (planParam === 'standard') amount = 500; // Базовичок - всегда 500р за 3 месяца
+      if (planParam === 'premium') amount = 1500; // Наш котяра - всегда 1500р за год
+      // --- КОНЕЦ РАСЧЁТА ---
+
       const paymentData = {
         userId,
         plan: planParam,
         currency,
-        period: periodParam
+        period: periodParam,
+        amount
       };
       
       const newPayment = await createPayment(paymentData);
@@ -227,38 +303,26 @@ const PaymentPage = () => {
       setLoading(true);
       setError(null);
       
-      // Определяем, какой тип платежа используется
-      const isManualTinkoffPayment = payment.currency === 'manual_tinkoff';
+      const response = await fetch(`/api/payment/status/${payment.paymentId}/confirm`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        }
+      });
       
-      // Используем соответствующую функцию подтверждения в зависимости от типа платежа
-      let confirmedPayment;
-      if (isManualTinkoffPayment) {
-        confirmedPayment = await confirmManualPayment(payment.paymentId);
-      } else {
-        confirmedPayment = await confirmPayment(payment.paymentId);
+      const data = await response.json();
+      if (!data.success) {
+        throw new Error(data.message || 'Не удалось подтвердить платеж');
       }
       
-      setPayment(confirmedPayment);
+      // Обновляем состояние платежа
+      setPayment(data.payment);
       
-      if (confirmedPayment.status === 'completed') {
-        // В реальном приложении здесь можно добавить отправку уведомления пользователю
-        console.log('Платеж успешно подтвержден!');
-        
-        // Если у пользователя есть email, отправляем инструкции и ключ
-        if (user && user.email) {
-          // В реальном приложении здесь будет отправка email
-          console.log(`Отправляем ключ и инструкции на email: ${user.email}`);
-        }
-        
-        // Если у пользователя есть Telegram ID, отправляем инструкции и ключ
-        if (user && user.id && user.id !== 'anonymous-user') {
-          // В реальном приложении здесь будет отправка в Telegram
-          console.log(`Отправляем ключ и инструкции в Telegram ID: ${user.id}`);
-        }
-      } else if (confirmedPayment.status === 'waiting_confirmation') {
-        // Платеж отправлен на подтверждение администратором
-        console.log('Платеж отправлен на подтверждение администратором');
+      // Запускаем опрос статуса, если платеж в ожидании подтверждения
+      if (data.payment.status === 'waiting_confirmation') {
+        setIsPolling(false); // Сбрасываем флаг, чтобы запустить новый опрос
       }
+      
     } catch (error) {
       console.error('Ошибка при подтверждении платежа:', error);
       setError(error.message || 'Не удалось подтвердить платеж');
@@ -343,7 +407,7 @@ const PaymentPage = () => {
       </AuthContainer>
     );
   };
-  
+
   return (
     <PageContainer>
       <Content>

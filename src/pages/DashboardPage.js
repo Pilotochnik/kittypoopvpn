@@ -205,7 +205,6 @@ const Button = styled(motion.button)`
 
 const DashboardPage = () => {
   const { user, isAuthenticated } = useAuth();
-  const [activeTab, setActiveTab] = useState('keys');
   
   // Если пользователь не авторизован, перенаправляем на страницу входа
   if (!isAuthenticated) {
@@ -290,109 +289,8 @@ const DashboardPage = () => {
           </StatCard>
         </StatGrid>
         
-        <Tabs>
-          <Tab active={activeTab === 'keys'} onClick={() => setActiveTab('keys')}>
-            Мои ключи
-          </Tab>
-          <Tab active={activeTab === 'profile'} onClick={() => setActiveTab('profile')}>
-            Профиль
-          </Tab>
-          <Tab active={activeTab === 'payments'} onClick={() => setActiveTab('payments')}>
-            История платежей
-          </Tab>
-          <Tab active={activeTab === 'settings'} onClick={() => setActiveTab('settings')}>
-            Настройки
-          </Tab>
-        </Tabs>
-        
-        {activeTab === 'keys' && (
-          <KeysList />
-        )}
-        
-        {activeTab === 'profile' && (
-          <Card
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <h2>Личные данные</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Эти данные используются только для идентификации вашего аккаунта.
-            </p>
-            
-            <FormGroup>
-              <Label>Имя</Label>
-              <Input type="text" defaultValue={user.name} />
-            </FormGroup>
-            
-            <FormGroup>
-              <Label>Email</Label>
-              <Input type="email" defaultValue={user.email} />
-            </FormGroup>
-            
-            <Button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              Сохранить изменения
-            </Button>
-          </Card>
-        )}
-        
-        {activeTab === 'payments' && (
-          <Card
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <h2>История платежей</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Ваши последние транзакции:
-            </p>
-            
-            {/* Пример истории платежей */}
-            <div style={{ color: 'var(--text-secondary)', textAlign: 'center', padding: '40px 0' }}>
-              <p>История платежей пуста</p>
-            </div>
-          </Card>
-        )}
-        
-        {activeTab === 'settings' && (
-          <Card
-            initial={{ opacity: 0, y: 20 }}
-            animate={{ opacity: 1, y: 0 }}
-            transition={{ duration: 0.3 }}
-          >
-            <h2>Настройки</h2>
-            <p style={{ color: 'var(--text-secondary)', marginBottom: '20px' }}>
-              Управление настройками аккаунта.
-            </p>
-            
-            <FormGroup>
-              <Label>Смена пароля</Label>
-              <Input type="password" placeholder="Текущий пароль" style={{ marginBottom: '10px' }} />
-              <Input type="password" placeholder="Новый пароль" style={{ marginBottom: '10px' }} />
-              <Input type="password" placeholder="Подтвердите новый пароль" />
-            </FormGroup>
-            
-            <Button whileHover={{ scale: 1.05 }} whileTap={{ scale: 0.95 }}>
-              Обновить пароль
-            </Button>
-            
-            <hr style={{ margin: '30px 0', borderColor: 'rgba(255, 255, 255, 0.1)' }} />
-            
-            <div>
-              <h3 style={{ marginBottom: '15px' }}>Удаление аккаунта</h3>
-              <p style={{ color: 'var(--text-secondary)', marginBottom: '15px' }}>
-                Это действие необратимо. После удаления аккаунта все данные будут стерты.
-              </p>
-              <Button 
-                whileHover={{ scale: 1.05 }} 
-                whileTap={{ scale: 0.95 }}
-                style={{ background: 'var(--error-color)' }}
-              >
-                Удалить аккаунт
-              </Button>
-            </div>
-          </Card>
-        )}
+        {/* Временно показываем только список ключей */}
+        <KeysList />
       </Content>
     </DashboardContainer>
   );

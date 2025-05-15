@@ -77,6 +77,8 @@ const AuthSuccessPage = () => {
         const token = params.get('token');
         const redirectPath = params.get('redirect') || '/profile';
         
+        console.log('Процесс авторизации. Токен:', token, 'Redirect:', redirectPath);
+        
         if (!token) {
           setError('Отсутствует токен авторизации');
           setLoading(false);
@@ -85,13 +87,19 @@ const AuthSuccessPage = () => {
         
         // Если пользователь уже авторизован, просто перенаправляем
         if (isAuthenticated) {
+          console.log('Пользователь уже авторизован, перенаправление на:', redirectPath);
           navigate(redirectPath);
           return;
         }
         
         // Отправляем запрос к API для получения данных пользователя
-        const response = await fetch(`${process.env.REACT_APP_API_URL || 'http://localhost:5000'}/api/auth/${token}`);
+        const apiUrl = `${process.env.REACT_APP_API_URL || 'http://134.209.91.29/api'}/auth/${token}`;
+        console.log('Отправка запроса к API:', apiUrl);
+        
+        const response = await fetch(apiUrl);
         const data = await response.json();
+        
+        console.log('Ответ API:', data);
         
         if (!data.success) {
           setError(data.message || 'Ошибка авторизации');
@@ -100,18 +108,21 @@ const AuthSuccessPage = () => {
         }
         
         // Авторизуем пользователя в системе
+        console.log('Вызов telegramAuth с данными пользователя:', data.user);
         const authResult = telegramAuth(data.user);
         
         if (authResult) {
+          console.log('Авторизация успешна, перенаправление на:', redirectPath);
           // Перенаправляем на указанную страницу
           navigate(redirectPath);
         } else {
+          console.error('telegramAuth вернул falsy значение');
           setError('Не удалось выполнить вход. Попробуйте снова.');
           setLoading(false);
         }
       } catch (err) {
         console.error('Ошибка при обработке авторизации:', err);
-        setError('Произошла ошибка при обработке авторизации');
+        setError(`Произошла ошибка при обработке авторизации: ${err.message || 'Неизвестная ошибка'}`);
         setLoading(false);
       }
     };

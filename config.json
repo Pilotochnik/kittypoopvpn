@@ -1,0 +1,52 @@
+{
+  "log": {
+    "loglevel": "warning"
+  },
+  "inbounds": [
+    {
+      "port": 4843,
+      "protocol": "vless",
+      "settings": {
+        "clients": [
+          {
+            "id": "62bc8aba-1979-4918-85ca-0e2eea1df559",
+            "flow": "xtls-rprx-vision"
+          }
+        ],
+        "decryption": "none"
+      },
+      "streamSettings": {
+        "network": "tcp",
+        "security": "reality",
+        "realitySettings": {
+          "show": false,
+          "dest": "cloudflare.com:443",
+          "xver": 0,
+          "serverNames": ["cloudflare.com"],
+          "privateKey": "2KZ4uouMKgI8nR-HNJVvXkEw1UjMD9r5CXH0GJtGOHI",
+          "shortIds": ["42"],
+          "maxTimeDiff": 0,
+          "fingerprint": "random"
+        }
+      },
+      "sniffing": {
+        "enabled": true,
+        "destOverride": ["http", "tls", "quic"]
+      }
+    }
+  ],
+  "outbounds": [
+    {
+      "protocol": "freedom",
+      "settings": {
+        "domainStrategy": "UseIP"
+      },
+      "streamSettings": {
+        "sockopt": {
+          "tcpFastOpen": true,
+          "tcpKeepAliveInterval": 30
+        }
+      }
+    }
+  ]
+} 

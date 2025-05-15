@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import { QRCodeSVG } from 'qrcode.react';
+import { useNavigate } from 'react-router-dom';
 
 const Container = styled.div`
   width: 100%;
@@ -86,6 +87,16 @@ const QRCodeWrapper = styled.div`
   padding: 15px;
   border-radius: 10px;
   margin-bottom: 15px;
+`;
+
+const QRCodeContainer = styled.div`
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  width: 100%;
+  background-color: white;
+  border-radius: 8px;
+  padding: 10px;
 `;
 
 const WalletAddress = styled.div`
@@ -178,8 +189,16 @@ const ButtonsContainer = styled.div`
 `;
 
 const KeyContainer = styled(motion.div)`
-  background-color: rgba(80, 250, 123, 0.1);
-  border: 1px solid var(--success-color);
+  background-color: ${props => 
+    props.status === 'preparing' 
+      ? 'rgba(80, 120, 255, 0.1)'
+      : 'rgba(80, 250, 123, 0.1)'
+  };
+  border: 1px solid ${props => 
+    props.status === 'preparing'
+      ? 'var(--primary-color)'
+      : 'var(--success-color)'
+  };
   border-radius: 12px;
   padding: 20px;
   margin-top: 30px;
@@ -194,12 +213,60 @@ const KeyTitle = styled.h4`
 
 const KeyValue = styled.div`
   font-family: monospace;
-  background-color: rgba(255, 255, 255, 0.1);
-  padding: 10px 15px;
+  background-color: rgba(0, 0, 0, 0.2);
+  color: var(--text-color);
+  padding: 15px;
   border-radius: 10px;
-  margin-bottom: 10px;
+  margin-bottom: 15px;
   word-break: break-all;
-  font-size: 0.8rem;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  white-space: pre-wrap;
+  position: relative;
+  min-height: 60px;
+`;
+
+const Label = styled.div`
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+  margin-bottom: 5px;
+`;
+
+const Value = styled.div`
+  color: var(--text-color);
+  font-family: monospace;
+  word-break: break-all;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  min-height: 20px;
+`;
+
+const ConfigValue = styled.div`
+  font-family: monospace;
+  background-color: rgba(255, 255, 255, 0.05);
+  padding: 15px;
+  border-radius: 10px;
+  margin: 15px 0;
+  word-break: break-all;
+  font-size: 0.9rem;
+  line-height: 1.4;
+  color: var(--text-color);
+  position: relative;
+`;
+
+const LoadingSpinner = styled.div`
+  border: 3px solid rgba(255, 255, 255, 0.1);
+  border-radius: 50%;
+  border-top: 3px solid var(--primary-color);
+  width: 30px;
+  height: 30px;
+  animation: spin 1s linear infinite;
+  margin: 20px auto;
+  
+  @keyframes spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+  }
 `;
 
 const formatTime = (seconds) => {
@@ -210,13 +277,28 @@ const formatTime = (seconds) => {
   return `${hours.toString().padStart(2, '0')}:${minutes.toString().padStart(2, '0')}:${remainingSeconds.toString().padStart(2, '0')}`;
 };
 
-const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
-  const [copied, setCopied] = useState(false);
+const CryptoPaymentDetails = ({ payment, onInstructionsClick }) => {
+  const [copiedKey, setCopiedKey] = useState(false);
   const [timeLeft, setTimeLeft] = useState(0);
+  const navigate = useNavigate();
+  
+  useEffect(() => {
+    if (payment) {
+      console.log('CryptoPaymentDetails: получен платеж', {
+        status: payment.status,
+        hasVpnKey: !!payment.vpnKey,
+        vpnKeyDetails: payment.vpnKey ? {
+          hasConfig: !!payment.vpnKey.config,
+          configType: typeof payment.vpnKey.config
+        } : null
+      });
+    }
+  }, [payment]);
   
   useEffect(() => {
     if (payment && payment.status === 'pending') {
-      const expiryTime = new Date(payment.expires).getTime();
+      const expiryRaw = payment.expires || payment.expiryTime;
+      const expiryTime = new Date(expiryRaw).getTime();
       const now = new Date().getTime();
       const initialSeconds = Math.max(0, Math.floor((expiryTime - now) / 1000));
       
@@ -236,12 +318,16 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
     }
   }, [payment]);
   
-  const handleCopyAddress = () => {
-    if (payment && payment.wallet) {
-      navigator.clipboard.writeText(payment.wallet);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+  const handleCopyKey = (text) => {
+    if (text) {
+      navigator.clipboard.writeText(text);
+      setCopiedKey(true);
+      setTimeout(() => setCopiedKey(false), 2000);
     }
+  };
+  
+  const goToInstructions = () => {
+    navigate('/instructions');
   };
   
   const getCurrencyName = (code) => {
@@ -273,6 +359,126 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
   // Проверяем, является ли платеж ручным переводом на карту Тинькофф
   const isManualTinkoffPayment = payment.currency === 'manual_tinkoff';
   
+  const renderKeyStatus = () => {
+    if (!payment) return null;
+    
+    if (payment.status === 'completed') {
+      const vpnKey = payment.vpnKey;
+      console.log('Данные VPN ключа:', {
+        vpnKey,
+        hasVpnKey: !!vpnKey,
+        config: vpnKey?.config,
+        configType: typeof vpnKey?.config
+      });
+      
+      return (
+        <KeyContainer>
+          <Title>Ваш VPN ключ готов!</Title>
+          {vpnKey ? (
+            <>
+              <KeyValue>
+                <Label>UUID:</Label>
+                <Value>{vpnKey.uuid}</Value>
+                <CopyButton onClick={() => handleCopyKey(vpnKey.uuid)}>
+                  Копировать
+                </CopyButton>
+              </KeyValue>
+              
+              <KeyValue>
+                <Label>Конфигурация:</Label>
+                <Value style={{ 
+                  whiteSpace: 'pre-wrap',
+                  overflowWrap: 'break-word',
+                  minHeight: '60px'
+                }}>
+                  {vpnKey.config || 'Конфигурация не найдена'}
+                </Value>
+                <CopyButton onClick={() => handleCopyKey(vpnKey.config)}>
+                  Копировать
+                </CopyButton>
+              </KeyValue>
+              
+              <KeyValue>
+                <Label>Действует до:</Label>
+                <Value>
+                  {new Date(vpnKey.expires).toLocaleDateString()}
+                </Value>
+              </KeyValue>
+
+              <QRCodeWrapper>
+                <QRCodeContainer>
+                  <QRCodeSVG 
+                    value={vpnKey.config || ''}
+                    size={220}
+                    bgColor={"#ffffff"}
+                    fgColor={"#000000"}
+                    level={"L"}
+                    includeMargin={false}
+                  />
+                </QRCodeContainer>
+              </QRCodeWrapper>
+
+              <ButtonsContainer>
+                <Button onClick={onInstructionsClick}>
+                  Инструкция по настройке
+                </Button>
+              </ButtonsContainer>
+            </>
+          ) : (
+            <div>Ключ не найден</div>
+          )}
+        </KeyContainer>
+      );
+    }
+    
+    if (payment.status === 'waiting_confirmation') {
+      return (
+        <KeyContainer 
+          status="preparing"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <KeyTitle style={{ color: 'var(--primary-color)' }}>
+            Проверка оплаты
+          </KeyTitle>
+          <p style={{ 
+            textAlign: 'center', 
+            color: 'var(--text-secondary)', 
+            marginBottom: '20px' 
+          }}>
+            Администратор проверяет ваш платеж. Это может занять несколько минут.
+          </p>
+          <LoadingSpinner />
+        </KeyContainer>
+      );
+    }
+    
+    if (payment.status === 'pending') {
+      return (
+        <KeyContainer 
+          status="preparing"
+          initial={{ opacity: 0, y: 20 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ duration: 0.5 }}
+        >
+          <KeyTitle style={{ color: 'var(--primary-color)' }}>
+            Ожидание оплаты
+          </KeyTitle>
+          <p style={{ 
+            textAlign: 'center', 
+            color: 'var(--text-secondary)', 
+            marginBottom: '20px' 
+          }}>
+            Пожалуйста, выполните перевод указанной суммы для получения VPN ключа
+          </p>
+        </KeyContainer>
+      );
+    }
+    
+    return null;
+  };
+  
   return (
     <Container>
       <Title status={payment.status}>
@@ -293,11 +499,12 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
         <InfoRow>
           <InfoLabel>Тариф</InfoLabel>
           <InfoValue>
-            {payment.plan === 'basic' ? 'Базовый' : 
-             payment.plan === 'standard' ? 'Стандартный' : 
-             payment.plan === 'premium' ? 'Премиум' : payment.plan}
+            {payment.plan === 'basic' ? 'Пробный месяц' : 
+             payment.plan === 'standard' ? 'Базовичок' : 
+             payment.plan === 'premium' ? 'Наш котяра' : payment.plan}
             {' '}
-            ({payment.period === 'monthly' ? 'месяц' : 'год'})
+            ({payment.period === 'monthly' ? 'месяц' : 
+              payment.period === 'quarterly' ? '3 месяца' : 'год'})
           </InfoValue>
         </InfoRow>
         
@@ -323,28 +530,9 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
         )}
       </InfoContainer>
       
-      {payment.status === 'completed' ? (
-        <KeyContainer
-          initial={{ opacity: 0, y: 20 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.5 }}
-        >
-          <KeyTitle>Ваш VPN-ключ готов!</KeyTitle>
-          {payment.vpnKey && (
-            <>
-              <KeyValue>{payment.vpnKey.config}</KeyValue>
-              <ButtonsContainer>
-                <Button
-                  confirm
-                  onClick={() => onCheckQR(payment.vpnKey.config)}
-                >
-                  Показать QR-код
-                </Button>
-              </ButtonsContainer>
-            </>
-          )}
-        </KeyContainer>
-      ) : isManualTinkoffPayment ? (
+      {renderKeyStatus()}
+      
+      {isManualTinkoffPayment && payment.status === 'pending' ? (
         <>
           <PaymentQRContainer>
             <InfoRow style={{ justifyContent: 'center', textAlign: 'center', border: 'none' }}>
@@ -366,8 +554,8 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
             <CopyButton 
               onClick={() => {
                 navigator.clipboard.writeText(payment.cardNumber || '2200700774500382');
-                setCopied(true);
-                setTimeout(() => setCopied(false), 2000);
+                setCopiedKey(true);
+                setTimeout(() => setCopiedKey(false), 2000);
               }}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
@@ -375,7 +563,7 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
               <svg viewBox="0 0 24 24">
                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
               </svg>
-              {copied ? 'Скопировано!' : 'Копировать номер карты'}
+              {copiedKey ? 'Скопировано!' : 'Копировать номер карты'}
             </CopyButton>
           </PaymentQRContainer>
           
@@ -388,7 +576,7 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
           
           <ButtonsContainer>
             <Button
-              onClick={onBack}
+              onClick={goToInstructions}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -406,7 +594,7 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
             ) : (
               <Button
                 confirm
-                onClick={onConfirm}
+                onClick={goToInstructions}
                 whileHover={{ scale: 1.05 }}
                 whileTap={{ scale: 0.95 }}
               >
@@ -415,7 +603,7 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
             )}
           </ButtonsContainer>
         </>
-      ) : (
+      ) : payment.status === 'pending' && (
         <>
           <PaymentQRContainer>
             <QRCodeWrapper>
@@ -434,14 +622,18 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
             </WalletAddress>
             
             <CopyButton 
-              onClick={handleCopyAddress}
+              onClick={() => {
+                navigator.clipboard.writeText(payment.cryptoAddress);
+                setCopiedKey(true);
+                setTimeout(() => setCopiedKey(false), 2000);
+              }}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
               <svg viewBox="0 0 24 24">
                 <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z" />
               </svg>
-              {copied ? 'Скопировано!' : 'Копировать адрес'}
+              {copiedKey ? 'Скопировано!' : 'Копировать адрес'}
             </CopyButton>
           </PaymentQRContainer>
           
@@ -454,7 +646,7 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
           
           <ButtonsContainer>
             <Button
-              onClick={onBack}
+              onClick={goToInstructions}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >
@@ -463,7 +655,7 @@ const CryptoPaymentDetails = ({ payment, onConfirm, onBack, onCheckQR }) => {
             
             <Button
               confirm
-              onClick={onConfirm}
+              onClick={goToInstructions}
               whileHover={{ scale: 1.05 }}
               whileTap={{ scale: 0.95 }}
             >

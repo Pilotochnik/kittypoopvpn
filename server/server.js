@@ -1,7 +1,11 @@
 const express = require('express');
 const cors = require('cors');
-const TelegramBot = require('node-telegram-bot-api');
 const { connectDB } = require('./db');
+const { httpLogger } = require('./utils/logger');
+const { monitoringMiddleware } = require('./utils/monitoring');
+const VpnKey = require('./models/VpnKey');
+const Payment = require('./models/Payment');
+const User = require('./models/User');
 require('dotenv').config();
 
 // Импорт роутеров
@@ -15,18 +19,35 @@ const PORT = process.env.PORT || 5000;
 
 // Middleware
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: function (origin, callback) {
+    // Разрешаем запросы с localhost:3000 и localhost:3001 (React dev server)
+    const allowedOrigins = [
+      'http://localhost:3000',
+      'http://localhost:3001',
+      'http://127.0.0.1:3000',
+      'http://127.0.0.1:3001',
+    ];
+    // Также разрешаем из переменной окружения, если она задана
+    if (process.env.FRONTEND_URL) {
+      allowedOrigins.push(process.env.FRONTEND_URL);
+    }
+    // Если origin не передан (например, curl или Postman) — разрешаем
+    if (!origin) return callback(null, true);
+    if (allowedOrigins.includes(origin)) {
+      return callback(null, true);
+    } else {
+      return callback(new Error('Not allowed by CORS: ' + origin));
+    }
+  },
   methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
   allowedHeaders: ['Content-Type', 'Authorization'],
   credentials: true
 }));
 app.use(express.json());
 
-// Middleware для логирования запросов
-app.use((req, res, next) => {
-  console.log(`${new Date().toISOString()} - ${req.method} ${req.originalUrl}`);
-  next();
-});
+// Логирование и мониторинг
+app.use(httpLogger);
+app.use(monitoringMiddleware);
 
 // Подключаем маршруты
 app.use('/api/auth', authRoutes);
@@ -38,21 +59,53 @@ app.get('/', (req, res) => {
   res.json({ message: 'Kitty Poop VPN API работает!' });
 });
 
-// Запуск сервера
-async function startServer() {
+// Функция инициализации базы данных и таймеров
+async function initializeDatabase() {
   try {
-    // Подключаемся к MongoDB
+    // Подключаемся к базе данных
     await connectDB();
+    console.log('SQLite успешно подключена');
     
-    // Запускаем сервер Express
-    app.listen(PORT, () => {
-      console.log(`Сервер запущен на порту ${PORT}`);
-    });
+    // Пересоздаем таблицы
+    await User.createTable();
+    await VpnKey.recreateTable();
+    await Payment.recreateTable();
+    
+    // Даем небольшую паузу для гарантии создания таблиц
+    await new Promise(resolve => setTimeout(resolve, 100));
+    
+    // Только после создания таблиц восстанавливаем таймеры
+    try {
+      await VpnKey.restoreDeactivationTimers();
+      console.log('Таймеры деактивации успешно восстановлены');
+    } catch (error) {
+      console.error('Ошибка при восстановлении таймеров:', error);
+      // Продолжаем работу даже при ошибке с таймерами
+    }
   } catch (error) {
-    console.error('Не удалось запустить сервер:', error);
-    process.exit(1);
+    console.error('Ошибка при инициализации базы данных:', error);
+    throw error;
   }
 }
 
-// Запускаем сервер
-startServer(); 
+// Запуск сервера только если не в тестовом режиме
+if (process.env.NODE_ENV !== 'test') {
+  async function startServer() {
+    try {
+      // Инициализируем базу данных и таймеры
+      await initializeDatabase();
+      
+      // Запускаем сервер
+      app.listen(PORT, () => {
+        console.log(`Сервер запущен на порту ${PORT}`);
+      });
+    } catch (error) {
+      console.error('Не удалось запустить сервер:', error);
+      process.exit(1);
+    }
+  }
+  startServer();
+}
+
+// Экспортируем приложение для тестов
+module.exports = app; 

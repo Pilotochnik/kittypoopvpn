@@ -1,33 +1,51 @@
 {
   "name": "kitty-poop-vpn",
-  "version": "0.1.0",
+  "version": "1.0.0",
   "private": true,
+  "browser": {
+    "process": "process/browser.js"
+  },
   "dependencies": {
     "@testing-library/jest-dom": "^5.16.5",
     "@testing-library/react": "^13.4.0",
-    "@testing-library/user-event": "^13.5.0",
+    "@testing-library/user-event": "^14.4.3",
+    "assert": "^2.1.0",
     "axios": "^1.3.6",
+    "browserify-zlib": "^0.2.0",
+    "buffer": "^6.0.3",
+    "crypto-browserify": "^3.12.1",
     "dotenv": "^16.5.0",
-    "framer-motion": "^10.12.4",
-    "mongoose": "^8.14.1",
-    "qrcode.react": "^4.2.0",
+    "framer-motion": "^10.12.16",
+    "https-browserify": "^1.0.0",
+    "https-proxy-agent": "^7.0.6",
+    "os-browserify": "^0.3.0",
+    "path-browserify": "^1.0.1",
+    "process": "^0.11.10",
+    "qrcode.react": "^3.1.0",
     "react": "^18.2.0",
     "react-copy-to-clipboard": "^5.1.0",
     "react-dom": "^18.2.0",
     "react-icons": "^4.8.0",
-    "react-router-dom": "^6.10.0",
+    "react-router-dom": "^6.11.2",
     "react-scripts": "5.0.1",
+    "react-toastify": "^11.0.5",
+    "socks-proxy-agent": "^8.0.5",
+    "stream-browserify": "^3.0.0",
+    "stream-http": "^3.2.0",
     "styled-components": "^5.3.10",
     "uuid": "^9.0.0",
     "web-vitals": "^2.1.4"
   },
   "scripts": {
-    "start": "react-scripts start",
-    "build": "react-scripts build",
-    "test": "react-scripts test",
+    "start": "react-app-rewired start",
+    "build": "react-app-rewired build",
+    "test": "react-app-rewired test --transformIgnorePatterns \"node_modules/(?!uuid)/\"",
+    "test:coverage": "react-app-rewired test --coverage --watchAll=false --transformIgnorePatterns \"node_modules/(?!uuid)/\"",
     "eject": "react-scripts eject",
-    "dev": "powershell -Command \"Start-Process powershell -ArgumentList '-NoExit', '-Command', 'cd server; npm start'; Start-Sleep -s 5; npm start\""
+    "dev": "powershell -Command \"Start-Process powershell -ArgumentList '-NoExit', '-Command', 'cd server; npm start'; Start-Sleep -s 5; npm start\"",
+    "test-server": "mocha server/tests/*.test.js"
   },
+  "proxy": "http://localhost:5000",
   "eslintConfig": {
     "extends": [
       "react-app",
@@ -45,5 +63,36 @@
       "last 1 firefox version",
       "last 1 safari version"
     ]
+  },
+  "jest": {
+    "setupFilesAfterEnv": [
+      "<rootDir>/src/__mocks__/setupTests.js"
+    ],
+    "collectCoverageFrom": [
+      "src/**/*.{js,jsx}",
+      "!src/index.js",
+      "!src/reportWebVitals.js"
+    ],
+    "coverageThreshold": {
+      "global": {
+        "branches": 80,
+        "functions": 80,
+        "lines": 80,
+        "statements": 80
+      }
+    },
+    "moduleNameMapper": {
+      "\\.(css|less|scss|sass)$": "identity-obj-proxy"
+    },
+    "testEnvironment": "jsdom"
+  },
+  "devDependencies": {
+    "chai": "^5.2.0",
+    "identity-obj-proxy": "^3.0.0",
+    "mocha": "^11.2.2",
+    "react-app-rewired": "^2.2.1",
+    "sinon": "^20.0.0",
+    "supertest": "^7.1.0",
+    "vm-browserify": "^1.1.2"
   }
 }

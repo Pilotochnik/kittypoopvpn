@@ -34,7 +34,7 @@ fi
 CLIENTS=$(jq -r '.inbounds[0].settings.clients' $CONFIG_PATH)
 
 # Домен сервера
-DOMAIN="vpn.kittypoopvpn.com"
+DOMAIN="167.99.215.131"
 
 # Дата истечения срока действия
 EXPIRY_DATE=$(date -d "+$DAYS days" +"%Y-%m-%d")

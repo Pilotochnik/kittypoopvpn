@@ -1,11 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { Link, useNavigate } from 'react-router-dom';
-import { generateVlessKey } from '../utils/vpnUtils';
+import { Link } from 'react-router-dom';
 import { CopyToClipboard } from 'react-copy-to-clipboard';
 import { QRCodeSVG } from 'qrcode.react';
-import { useAuth } from '../context/AuthContext';
 
 const GeneratorContainer = styled.div`
   background-color: var(--card-background);
@@ -79,34 +77,6 @@ const GenerateButton = styled(motion.button)`
   &:hover {
     transform: translateY(-2px);
     box-shadow: 0 8px 20px rgba(140, 82, 255, 0.3);
-  }
-`;
-
-const TelegramAuthButton = styled(motion.button)`
-  width: 100%;
-  padding: 15px;
-  background: linear-gradient(90deg, #0088cc, #0099ff);
-  border: none;
-  border-radius: 8px;
-  color: white;
-  font-weight: bold;
-  font-size: 16px;
-  cursor: pointer;
-  margin-top: 10px;
-  transition: all 0.3s ease;
-  display: flex;
-  justify-content: center;
-  align-items: center;
-  gap: 12px;
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(0, 136, 204, 0.3);
-  }
-  
-  svg {
-    width: 20px;
-    height: 20px;
   }
 `;
 
@@ -251,44 +221,13 @@ const InfoBlock = styled.div`
   border-radius: 4px;
 `;
 
-// Фиксированный UUID, который работает на сервере
-const WORKING_UUID = '62bc8aba-1979-4918-85ca-0e2eea1df559';
-
-// Хук для локального хранилища
-const useLocalStorage = (key, initialValue) => {
-  const [storedValue, setStoredValue] = useState(() => {
-    try {
-      const item = window.localStorage.getItem(key);
-      return item ? JSON.parse(item) : initialValue;
-    } catch (error) {
-      console.log(error);
-      return initialValue;
-    }
-  });
-
-  const setValue = (value) => {
-    try {
-      const valueToStore = value instanceof Function ? value(storedValue) : value;
-      setStoredValue(valueToStore);
-      window.localStorage.setItem(key, JSON.stringify(valueToStore));
-    } catch (error) {
-      console.log(error);
-    }
-  };
-
-  return [storedValue, setValue];
-};
-
 const TrialKeyGenerator = () => {
-  const { isAuthenticated, user } = useAuth();
   const [generatedKey, setGeneratedKey] = useState('');
   const [copied, setCopied] = useState(false);
   const [expiryTime, setExpiryTime] = useState(null);
   const [timeLeft, setTimeLeft] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
-  const [trialKeys, setTrialKeys] = useLocalStorage('trialKeys', []);
-  const navigate = useNavigate();
 
   // Обновление таймера каждую секунду
   useEffect(() => {
@@ -314,94 +253,26 @@ const TrialKeyGenerator = () => {
     };
   }, [expiryTime]);
 
-  // Проверка наличия пробного ключа при загрузке
-  useEffect(() => {
-    if (isAuthenticated && trialKeys.length > 0) {
-      const userKeys = trialKeys.filter(k => k.userId === user.id);
-      
-      if (userKeys.length > 0) {
-        const lastKey = userKeys[userKeys.length - 1];
-        const expiry = new Date(lastKey.expires);
-        const now = new Date();
-        
-        if (expiry > now) {
-          setGeneratedKey(lastKey.key);
-          setExpiryTime(expiry);
-        } else {
-          // Удаляем истекшие ключи
-          setTrialKeys(prev => prev.filter(k => new Date(k.expires) > now));
-        }
-      }
-    }
-  }, [trialKeys, setTrialKeys, isAuthenticated, user]);
-
-  // Перенаправление на авторизацию через Telegram
-  const redirectToTelegramAuth = () => {
-    navigate('/auth/telegram', { state: { returnTo: '/' } });
-  };
-
   // Основная функция генерации ключа
-  const handleGenerateKey = () => {
-    if (!isAuthenticated) {
-      // Если пользователь не авторизован, предлагаем авторизоваться
-      redirectToTelegramAuth();
-      return;
-    }
-    
+  const handleGenerateKey = async () => {
     setLoading(true);
     setError('');
-    
     try {
-      // Проверяем, есть ли у пользователя уже действующий ключ
-      const userKeys = trialKeys.filter(k => k.userId === user.id);
-      const activeKey = userKeys.find(k => new Date(k.expires) > new Date());
+      const response = await fetch('/api/vpn/trial-key/anonymous', { method: 'POST' });
+      const data = await response.json();
       
-      if (activeKey) {
-        setGeneratedKey(activeKey.key);
-        setExpiryTime(new Date(activeKey.expires));
-        setLoading(false);
-        return;
+      if (data.key) {
+        setGeneratedKey(data.key.config);
+        setExpiryTime(new Date(data.key.expires));
+      } else if (data.error) {
+        setError(data.error);
+      } else if (data.message) {
+        setError(data.message);
+      } else {
+        setError('😢 Не удалось получить тестовый ключ. Пожалуйста, попробуйте позже!');
       }
-      
-      // Используем предустановленный UUID вместо генерации нового
-      const uuid = WORKING_UUID;
-      
-      // Генерируем время истечения
-      const now = new Date();
-      const expiry = new Date(now.getTime() + 60 * 60 * 1000); // +1 час
-      setExpiryTime(expiry);
-      
-      const formattedExpiry = expiry.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-      const keyName = `KittyPoopVPN_Trial_1h_${formattedExpiry}`;
-      
-      // Настройки для пробного ключа
-      const keyConfig = {
-        name: keyName,
-        uuid: uuid, // Используем рабочий UUID
-        serverDomain: 'pilotochnik.duckdns.org',
-        port: 443,
-        encryption: 'none',
-        security: 'tls',
-        type: 'ws',
-        path: '/vless'
-      };
-      
-      // Генерируем ключ
-      const key = generateVlessKey(keyConfig);
-      setGeneratedKey(key);
-      
-      // Сохраняем ключ в локальном хранилище
-      setTrialKeys(prev => [...prev, {
-        userId: user.id,
-        uuid,
-        key,
-        created: now.toISOString(),
-        expires: expiry.toISOString()
-      }]);
-      
     } catch (err) {
-      console.error('Ошибка при генерации пробного ключа:', err);
-      setError('Произошла ошибка при генерации пробного ключа. Пожалуйста, попробуйте снова позже.');
+      setError('😢 Не удалось получить тестовый ключ. Пожалуйста, попробуйте позже!');
     } finally {
       setLoading(false);
     }
@@ -424,34 +295,20 @@ const TrialKeyGenerator = () => {
       <Subtitle>Хотите попробовать наш VPN перед покупкой? Получите бесплатный ключ на 1 час!</Subtitle>
       
       <WarningText>
-        Для получения пробного ключа требуется авторизация через Telegram. Ключ будет активен только в течение 1 часа с момента генерации.
+        Ключ будет активен только в течение 1 часа с момента генерации. Один пробный ключ на пользователя (повторная выдача возможна через 24 часа).
       </WarningText>
       
       {error && <ErrorMessage>{error}</ErrorMessage>}
       
       {!generatedKey ? (
-        isAuthenticated ? (
-          <GenerateButton
-            onClick={handleGenerateKey}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            disabled={loading}
-          >
-            Получить пробный ключ
-          </GenerateButton>
-        ) : (
-          <TelegramAuthButton
-            onClick={redirectToTelegramAuth}
-            whileHover={{ scale: 1.02 }}
-            whileTap={{ scale: 0.98 }}
-            disabled={loading}
-          >
-            <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="white" width="24" height="24">
-              <path d="M9.78 18.65L10.06 14.42L17.74 7.5C18.08 7.19 17.67 7.04 17.22 7.31L7.74 13.3L3.64 12C2.76 11.75 2.75 11.14 3.84 10.7L19.81 4.54C20.54 4.21 21.24 4.72 20.96 5.84L18.24 18.65C18.05 19.56 17.5 19.78 16.74 19.36L12.6 16.3L10.61 18.23C10.38 18.46 10.19 18.65 9.78 18.65Z" />
-            </svg>
-            Авторизоваться через Telegram
-          </TelegramAuthButton>
-        )
+        <GenerateButton
+          onClick={handleGenerateKey}
+          whileHover={{ scale: 1.02 }}
+          whileTap={{ scale: 0.98 }}
+          disabled={loading}
+        >
+          Получить пробный ключ
+        </GenerateButton>
       ) : (
         <ResultContainer>
           <h3>Ваш пробный VLESS ключ:</h3>

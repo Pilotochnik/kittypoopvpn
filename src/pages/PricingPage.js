@@ -257,7 +257,7 @@ const PricingPage = () => {
     },
     {
       question: 'Могу ли я использовать один ключ на нескольких устройствах?',
-      answer: 'Да, вы можете использовать один ключ на нескольких устройствах. Количество одновременных подключений зависит от выбранного тарифа: для тарифа "Базвичок" - 1 подключение, "Квартальный" - до 3, а "Наш слоняра" - до 10 одновременных подключений.'
+      answer: 'Да, вы можете использовать один ключ на нескольких устройствах. Количество одновременных подключений зависит от выбранного тарифа: для тарифа "Пробный месяц" - 1 подключение, "Базовичок" - до 3, а "Наш котяра" - до 10 одновременных подключений.'
     },
     {
       question: 'Что произойдет по истечении срока действия ключа?',
@@ -269,7 +269,7 @@ const PricingPage = () => {
     },
     {
       question: 'Есть ли ограничения на скорость или трафик?',
-      answer: 'Мы не устанавливаем ограничений на скорость. Ограничения по трафику есть только на тарифе "Базвичок" (100 ГБ). Для тарифов "Квартальный" и "Наш слоняра" предоставляется безлимитный трафик.'
+      answer: 'Все наши тарифы предоставляют безлимитный трафик без ограничений по скорости. Вы можете свободно пользоваться VPN без каких-либо ограничений.'
     }
   ];
   
@@ -279,8 +279,8 @@ const PricingPage = () => {
         <HeaderSection>
           <Title>Выберите свой тариф</Title>
           <Description>
-            Мы предлагаем тарифы для всех потребностей - от базового месячного до годового премиум-доступа. 
-            Тариф "Наш слоняра" доступен только с оплатой на год.
+            Мы предлагаем тарифы для всех потребностей - от пробного месячного до годового премиум-доступа. 
+            Все тарифы включают безлимитный трафик без ограничений по скорости.
           </Description>
         </HeaderSection>
         
@@ -291,7 +291,7 @@ const PricingPage = () => {
             <line x1="12" y1="16" x2="12.01" y2="16"></line>
           </svg>
           <p>
-            <strong>Не уверены, какой тариф выбрать?</strong> Попробуйте наш бесплатный пробный период! Получите доступ к базовым функциям на 1 час, чтобы оценить качество сервиса.
+            <strong>Не уверены, какой тариф выбрать?</strong> Начните с пробного месяца! Получите полный доступ на 1 месяц, чтобы оценить качество сервиса.
           </p>
         </TrialNote>
         
@@ -301,20 +301,20 @@ const PricingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3 }}
           >
-            <PlanName>Базвичок</PlanName>
+            <PlanName>Пробный месяц</PlanName>
             <Price>
               200<span>₽/месяц</span>
             </Price>
             <PlanDescription>
-              Базовый доступ с ограниченным трафиком
+              Полный доступ на 1 месяц
             </PlanDescription>
             
             <FeaturesContainer>
-              <FeatureItem included={true}>Доступ к серверам стандартной скорости</FeatureItem>
-              <FeatureItem included={true}>100 ГБ трафика в месяц</FeatureItem>
+              <FeatureItem included={true}>Доступ ко всем серверам</FeatureItem>
+              <FeatureItem included={true}>Безлимитный трафик</FeatureItem>
+              <FeatureItem included={true}>Без ограничений скорости</FeatureItem>
               <FeatureItem included={true}>Поддержка через электронную почту</FeatureItem>
-              <FeatureItem included={false}>Приоритетные серверы</FeatureItem>
-              <FeatureItem included={false}>Одновременные подключения</FeatureItem>
+              <FeatureItem included={true}>1 одновременное подключение</FeatureItem>
             </FeaturesContainer>
             
             <Button 
@@ -327,26 +327,26 @@ const PricingPage = () => {
             </Button>
           </PricingCard>
           
-          <PricingCard
+          <PricingCard 
             popular
             initial={{ opacity: 0, y: 20 }}
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.1 }}
           >
             <PopularBadge>Популярный</PopularBadge>
-            <PlanName>Квартальный</PlanName>
+            <PlanName>Базовичок</PlanName>
             <Price popular>
               500<span>₽/3 месяца</span>
             </Price>
             <PlanDescription>
-              Оптимальное решение на квартал
+              Оптимальное решение на 3 месяца
             </PlanDescription>
             
             <FeaturesContainer>
               <FeatureItem included={true}>Доступ ко всем серверам</FeatureItem>
               <FeatureItem included={true}>Безлимитный трафик</FeatureItem>
+              <FeatureItem included={true}>Без ограничений скорости</FeatureItem>
               <FeatureItem included={true}>Поддержка 24/7</FeatureItem>
-              <FeatureItem included={true}>Приоритетные серверы</FeatureItem>
               <FeatureItem included={true}>До 3 одновременных подключений</FeatureItem>
             </FeaturesContainer>
             
@@ -366,7 +366,7 @@ const PricingPage = () => {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.3, delay: 0.2 }}
           >
-            <PlanName>Наш слоняра</PlanName>
+            <PlanName>Наш котяра</PlanName>
             <Price>
               1500<span>₽/год</span>
             </Price>
@@ -377,8 +377,8 @@ const PricingPage = () => {
             <FeaturesContainer>
               <FeatureItem included={true}>Доступ к премиум серверам</FeatureItem>
               <FeatureItem included={true}>Безлимитный трафик</FeatureItem>
+              <FeatureItem included={true}>Без ограничений скорости</FeatureItem>
               <FeatureItem included={true}>Приоритетная поддержка 24/7</FeatureItem>
-              <FeatureItem included={true}>VIP серверы с высокой скоростью</FeatureItem>
               <FeatureItem included={true}>До 10 одновременных подключений</FeatureItem>
             </FeaturesContainer>
             

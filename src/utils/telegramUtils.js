@@ -2,8 +2,11 @@
  * Утилиты для работы с авторизацией через Telegram
  */
 
-// URL API сервера
-const API_BASE_URL = 'http://localhost:5000/api';
+import * as cryptoModule from 'crypto-browserify';
+const crypto = cryptoModule.default || cryptoModule;
+
+// API URL
+const API_BASE_URL = process.env.REACT_APP_API_URL || 'http://134.209.91.29/api';
 
 /**
  * Проверяет подлинность полученных данных от Telegram Login Widget
@@ -72,17 +75,43 @@ export const verifyTelegramData = (telegramUser, botToken) => {
  */
 export const checkAuthStatus = async (token) => {
   try {
-    const response = await fetch(`${API_BASE_URL}/auth/${token}`);
-    const data = await response.json();
+    const url = `${API_BASE_URL}/auth/telegram/status?token=${token}&_cb=${Date.now()}`;
+    console.log(`[telegramUtils.checkAuthStatus] Fetching URL: ${url}`); // Добавим лог URL для отладки
+    const response = await fetch(url, {
+      method: 'GET',
+      cache: 'no-cache', // Явно указываем не использовать кэш
+      headers: {
+        'Content-Type': 'application/json'
+        // Можно также добавить 'Pragma': 'no-cache' и 'Expires': '0' для старых HTTP/1.0 клиентов,
+        // но 'cache: no-cache' является стандартом для fetch.
+      }
+    });
     
-    if (data.success && data.user) {
-      return data.user;
+    // Проверяем, что ответ успешный с точки зрения HTTP
+    if (!response.ok) {
+      // Попытаемся прочитать тело ошибки, если оно есть
+      let errorText = '';
+      try {
+        errorText = await response.text();
+      } catch (textError) {
+        // Игнорируем, если тело не читается
+      }
+      console.error(`[telegramUtils.checkAuthStatus] Ошибка HTTP: ${response.status}. Ответ: ${errorText}`);
+      // Возвращаем объект с ошибкой, чтобы TelegramLoginButton мог это обработать
+      return { success: false, status: response.status, message: `Ошибка сервера: ${response.status}${errorText ? ' - ' + errorText : ''}` };
     }
     
-    return null;
+    // Парсим JSON ответа
+    const data = await response.json();
+    console.log('[telegramUtils.checkAuthStatus] Ответ сервера:', data);
+    
+    // Возвращаем весь объект data, т.к. он содержит success и userData или другие поля статуса
+    return data; 
+    
   } catch (error) {
-    console.error('Ошибка при проверке статуса авторизации:', error);
-    return null;
+    console.error('[telegramUtils.checkAuthStatus] Исключение при проверке статуса:', error);
+    // Возвращаем объект с ошибкой для обработки в вызывающем коде
+    return { success: false, message: error.message || 'Сетевая ошибка или не удалось обработать ответ' };
   }
 };
 
@@ -150,6 +179,118 @@ export const formatTelegramUserData = (telegramUser) => {
     auth_date: telegramUser.auth_date || Math.floor(Date.now() / 1000),
     hash: telegramUser.hash || '',
   };
+};
+
+/**
+ * Верификация данных от Telegram WebApp
+ * @param {string} initData - Данные, полученные от Telegram WebApp
+ * @param {string} botToken - Токен бота (только первая часть токена до ':')
+ * @returns {boolean} - Результат проверки
+ */
+export const verifyTelegramWebAppData = (initData, botToken) => {
+  if (!initData) return false;
+  
+  // Получаем первую часть токена бота (для подписи)
+  const botTokenParts = botToken.split(':');
+  if (botTokenParts.length !== 2) return false;
+  
+  const botTokenFirstPart = botTokenParts[0];
+  
+  try {
+    // Парсим строку initData
+    const urlParams = new URLSearchParams(initData);
+    
+    // Получаем хэш
+    const hash = urlParams.get('hash');
+    if (!hash) return false;
+    
+    // Удаляем параметр hash для создания data-check-string
+    urlParams.delete('hash');
+    
+    // Сортируем пары ключ-значение
+    const keys = [...urlParams.keys()].sort();
+    const dataCheckParts = [];
+    
+    for (const key of keys) {
+      dataCheckParts.push(`${key}=${urlParams.get(key)}`);
+    }
+    
+    const dataCheckString = dataCheckParts.join('\n');
+    
+    // Создаем секретный ключ из первой части токена бота
+    const secret = crypto.createHash('sha256').update(botTokenFirstPart).digest();
+    
+    // Создаем хэш
+    const calculatedHash = crypto
+      .createHmac('sha256', secret)
+      .update(dataCheckString)
+      .digest('hex');
+    
+    // Сравниваем хэши
+    return calculatedHash === hash;
+  } catch (error) {
+    console.error('Ошибка при верификации Telegram WebApp данных:', error);
+    return false;
+  }
+};
+
+/**
+ * Получить данные пользователя из Telegram WebApp
+ * @returns {Object|null} - Данные пользователя или null, если пользователь не авторизован
+ */
+export const getTelegramWebAppUser = () => {
+  if (window.Telegram && window.Telegram.WebApp) {
+    return window.Telegram.WebApp.initDataUnsafe.user;
+  }
+  return null;
+};
+
+/**
+ * Проверить, открыто ли приложение в Telegram WebApp
+ * @returns {boolean} - Результат проверки
+ */
+export const isTelegramWebApp = () => {
+  return window.Telegram && window.Telegram.WebApp;
+};
+
+/**
+ * Закрыть Telegram WebApp
+ */
+export const closeTelegramWebApp = () => {
+  if (window.Telegram && window.Telegram.WebApp) {
+    window.Telegram.WebApp.close();
+  }
+};
+
+/**
+ * Отправить данные обратно в Telegram WebApp
+ * @param {Object} data - Данные для отправки
+ * @returns {boolean} - Результат отправки
+ */
+export const sendDataToTelegramWebApp = (data) => {
+  if (window.Telegram && window.Telegram.WebApp) {
+    window.Telegram.WebApp.sendData(JSON.stringify(data));
+    return true;
+  }
+  return false;
+};
+
+/**
+ * Расширить окно приложения на весь экран
+ */
+export const expandTelegramWebApp = () => {
+  if (window.Telegram && window.Telegram.WebApp) {
+    window.Telegram.WebApp.expand();
+  }
+};
+
+/**
+ * Сообщить Telegram, что приложение готово
+ */
+export const notifyTelegramWebAppReady = () => {
+  if (window.Telegram && window.Telegram.WebApp) {
+    window.Telegram.WebApp.ready();
+  }
 };
 
 /**

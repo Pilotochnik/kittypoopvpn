@@ -1,5 +1,5 @@
 // API URL
-const API_URL = process.env.REACT_APP_API_URL || 'http://134.209.91.29/api';
+const API_URL = '/api';
 
 // Кеш для хранения данных о платежах
 const paymentCache = new Map();
@@ -17,7 +17,7 @@ export const logApiCall = (method, url, data) => {
 /**
  * Создает новый платеж
  * @param {object} paymentData - Данные платежа
- * @param {string} paymentData.userId - ID пользователя
+ * @param {string} paymentData.userId - ID пользователя или 'anonymous-user' для анонимных платежей
  * @param {string} paymentData.plan - План (basic, standard, premium)
  * @param {string} paymentData.currency - Криптовалюта (btc, eth, usdt, usdt_eth)
  * @param {string} paymentData.period - Период (monthly, yearly)
@@ -25,13 +25,14 @@ export const logApiCall = (method, url, data) => {
  */
 export const createPayment = async (paymentData) => {
   try {
-    // Если это ручной платеж на карту Тинькофф, используем отдельный эндпоинт
-    if (paymentData.currency === 'manual_tinkoff') {
-      return createManualPayment(paymentData);
+    // Проверяем, есть ли userId, если нет - используем анонимный идентификатор
+    if (!paymentData.userId) {
+      paymentData.userId = 'anonymous-user';
+      console.log('Используется анонимный пользователь для создания платежа');
     }
     
-    logApiCall('POST', `${API_URL}/crypto-payment`, paymentData);
-    const response = await fetch(`${API_URL}/crypto-payment`, {
+    logApiCall('POST', `${API_URL}/payment/create`, paymentData);
+    const response = await fetch(`${API_URL}/payment/create`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -76,35 +77,6 @@ export const createPayment = async (paymentData) => {
 };
 
 /**
- * Создает новый ручной платеж на карту Тинькофф
- * @param {object} paymentData - Данные платежа
- * @returns {Promise<object>} - Объект с данными платежа
- */
-export const createManualPayment = async (paymentData) => {
-  try {
-    logApiCall('POST', `${API_URL}/manual-payment`, paymentData);
-    const response = await fetch(`${API_URL}/manual-payment`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json'
-      },
-      body: JSON.stringify(paymentData)
-    });
-    
-    const data = await response.json();
-    
-    if (!response.ok) {
-      throw new Error(data.message || 'Не удалось создать ручной платеж');
-    }
-    
-    return data.payment;
-  } catch (error) {
-    console.error('Ошибка при создании ручного платежа:', error);
-    throw error;
-  }
-};
-
-/**
  * Получает информацию о платеже
  * @param {string} paymentId - ID платежа
  * @returns {Promise<object>} - Объект с данными платежа
@@ -121,8 +93,8 @@ export const getPayment = async (paymentId) => {
       return cachedPayment;
     }
     
-    logApiCall('GET', `${API_URL}/crypto-payment/${paymentId}`);
-    const response = await fetch(`${API_URL}/crypto-payment/${paymentId}`);
+    logApiCall('GET', `${API_URL}/payment/status/${paymentId}`);
+    const response = await fetch(`${API_URL}/payment/status/${paymentId}`);
     
     if (!response.ok) {
       // Более подробная обработка ошибок HTTP
@@ -144,29 +116,33 @@ export const getPayment = async (paymentId) => {
     }
     
     const data = await response.json();
+    const paymentData = data.payment;
     
-    // Обновляем кеш
-    if (data.payment) {
+    // Если платеж завершен, vpnKey уже включен в объект payment с сервера
+    if (paymentData && paymentData.status === 'completed') {
+      console.log('Платеж завершен, проверяю наличие VPN ключа:', {
+        hasVpnKey: !!paymentData.vpnKey,
+        vpnKeyDetails: paymentData.vpnKey ? {
+          id: paymentData.vpnKey.id,
+          hasConfig: !!paymentData.vpnKey.config,
+          configType: typeof paymentData.vpnKey.config
+        } : null
+      });
+    }
+    
+    // Сохраняем платеж в кеше
+    if (paymentData) {
+      const now = new Date().getTime();
       paymentCache.set(paymentId, {
-        ...data.payment,
+        ...paymentData,
         cachedAt: now
       });
     }
     
-    return data.payment;
+    return paymentData;
   } catch (error) {
-    console.error('Ошибка при получении информации о платеже:', error);
-    // Если платеж в кеше есть, но он устарел, всё равно вернем его в случае ошибки сети
-    const cachedPayment = paymentCache.get(paymentId);
-    if (cachedPayment && error.message.includes('сети')) {
-      console.log(`Использую устаревшие кешированные данные для платежа ${paymentId} из-за проблем с сетью`);
-      return cachedPayment;
-    }
-    
-    const enhancedError = new Error(`Ошибка при получении платежа: ${error.message}`);
-    enhancedError.originalError = error;
-    enhancedError.paymentId = paymentId;
-    throw enhancedError;
+    console.error('Ошибка при получении данных платежа:', error);
+    throw error;
   }
 };
 
@@ -177,8 +153,8 @@ export const getPayment = async (paymentId) => {
  */
 export const confirmPayment = async (paymentId) => {
   try {
-    logApiCall('POST', `${API_URL}/crypto-payment/${paymentId}/confirm`);
-    const response = await fetch(`${API_URL}/crypto-payment/${paymentId}/confirm`, {
+    logApiCall('POST', `${API_URL}/payment/${paymentId}/confirm`);
+    const response = await fetch(`${API_URL}/payment/${paymentId}/confirm`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -189,6 +165,15 @@ export const confirmPayment = async (paymentId) => {
     
     if (!response.ok) {
       throw new Error(data.message || 'Не удалось подтвердить платеж');
+    }
+    
+    // Обновляем кеш, если есть данные о платеже
+    if (data.payment) {
+      const now = new Date().getTime();
+      paymentCache.set(paymentId, {
+        ...data.payment,
+        cachedAt: now
+      });
     }
     
     return data.payment;
@@ -205,8 +190,8 @@ export const confirmPayment = async (paymentId) => {
  */
 export const confirmManualPayment = async (paymentId) => {
   try {
-    logApiCall('POST', `${API_URL}/manual-payment/${paymentId}/confirm`);
-    const response = await fetch(`${API_URL}/manual-payment/${paymentId}/confirm`, {
+    logApiCall('POST', `${API_URL}/payment/status/${paymentId}/confirm`);
+    const response = await fetch(`${API_URL}/payment/status/${paymentId}/confirm`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json'
@@ -217,6 +202,15 @@ export const confirmManualPayment = async (paymentId) => {
     
     if (!response.ok) {
       throw new Error(data.message || 'Не удалось подтвердить ручной платеж');
+    }
+    
+    // Обновляем кеш, если есть данные о платеже
+    if (data.payment) {
+      const now = new Date().getTime();
+      paymentCache.set(paymentId, {
+        ...data.payment,
+        cachedAt: now
+      });
     }
     
     return data.payment;

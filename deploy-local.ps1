@@ -44,9 +44,9 @@ if ($LASTEXITCODE -eq 0) {
     Write-ColorOutput Yellow "Распаковка на сервере..."
     # Используем ssh для выполнения команд на сервере
     if ($SSH_KEY_PATH) {
-        ssh -i $SSH_KEY_PATH ${SERVER_USER}@${SERVER_IP} "cd ${SERVER_PATH} && rm -rf build && unzip -o build.zip -d . && rm build.zip"
+        ssh -i $SSH_KEY_PATH ${SERVER_USER}@${SERVER_IP} "cd ${SERVER_PATH} && mkdir -p build_temp && unzip -o build.zip -d build_temp && rm -rf static asset-manifest.json index.html manifest.json && mv build_temp/* . && rm -rf build_temp && rm build.zip"
     } else {
-        ssh ${SERVER_USER}@${SERVER_IP} "cd ${SERVER_PATH} && rm -rf build && unzip -o build.zip -d . && rm build.zip"
+        ssh ${SERVER_USER}@${SERVER_IP} "cd ${SERVER_PATH} && mkdir -p build_temp && unzip -o build.zip -d build_temp && rm -rf static asset-manifest.json index.html manifest.json && mv build_temp/* . && rm -rf build_temp && rm build.zip"
     }
     
     Write-ColorOutput Green "Деплой успешно завершен!"

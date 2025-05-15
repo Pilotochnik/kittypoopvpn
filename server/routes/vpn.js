@@ -1,5 +1,6 @@
 const express = require('express');
 const crypto = require('crypto');
+const QRCode = require('qrcode');
 const User = require('../models/User');
 const VpnKey = require('../models/VpnKey');
 require('dotenv').config();
@@ -23,7 +24,7 @@ router.post('/trial-key', async (req, res) => {
     if (!user) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Пользователь не найден' 
+        message: '😕 Пользователь не найден. Пожалуйста, попробуйте войти заново.' 
       });
     }
     
@@ -37,7 +38,7 @@ router.post('/trial-key', async (req, res) => {
     if (existingTrialKey) {
       return res.status(400).json({
         success: false,
-        message: 'У пользователя уже есть активный пробный ключ',
+        message: '😊 У вас уже есть активный тестовый ключ! Вы можете воспользоваться им до окончания срока действия.',
         key: {
           uuid: existingTrialKey.uuid,
           expires: existingTrialKey.expires
@@ -59,13 +60,13 @@ router.post('/trial-key', async (req, res) => {
     if (isNaN(expiry.getTime())) {
       return res.status(400).json({ 
         success: false, 
-        message: 'Некорректный формат даты истечения срока' 
+        message: '⏰ Некорректный формат даты. Пожалуйста, попробуйте ещё раз!' 
       });
     }
     
     // Генерируем конфигурацию VPN
     const vpnConfig = `server_address=vpn.kittypoopvpn.com
-port=51820
+port=4843
 private_key=${crypto.randomBytes(32).toString('base64')}
 dns=1.1.1.1
 allowed_ips=0.0.0.0/0,::/0`;
@@ -98,7 +99,7 @@ allowed_ips=0.0.0.0/0,::/0`;
     console.error('Ошибка при создании пробного ключа:', error);
     return res.status(500).json({ 
       success: false, 
-      message: 'Внутренняя ошибка сервера при создании пробного ключа'
+      message: '😢 Что-то пошло не так на сервере. Пожалуйста, попробуйте позже или напишите в поддержку!' 
     });
   }
 });
@@ -113,7 +114,7 @@ router.get('/key/:uuid', async (req, res) => {
     if (!vpnKey) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Ключ не найден' 
+        message: '🔑 Ключ не найден. Возможно, он был удалён или срок действия истёк.' 
       });
     }
     
@@ -165,7 +166,7 @@ router.get('/keys/:userId', async (req, res) => {
     if (!user) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Пользователь не найден' 
+        message: '😕 Пользователь не найден. Пожалуйста, попробуйте войти заново.' 
       });
     }
     
@@ -216,7 +217,7 @@ router.post('/deactivate/:uuid', async (req, res) => {
     if (!vpnKey) {
       return res.status(404).json({ 
         success: false, 
-        message: 'Ключ не найден' 
+        message: '🔑 Ключ не найден. Возможно, он был удалён или срок действия истёк.' 
       });
     }
     
@@ -236,5 +237,179 @@ router.post('/deactivate/:uuid', async (req, res) => {
     });
   }
 });
+
+// Функция для генерации QR-кода
+async function generateQRCode(data) {
+  try {
+    // Генерируем QR-код как SVG
+    const qrCodeSvg = await QRCode.toString(data, {
+      type: 'svg',
+      width: 512,
+      margin: 1,
+      errorCorrectionLevel: 'H'
+    });
+    return `data:image/svg+xml;base64,${Buffer.from(qrCodeSvg).toString('base64')}`;
+  } catch (error) {
+    console.error('Ошибка при генерации QR-кода:', error);
+    return null;
+  }
+}
+
+// Новый эндпоинт: генерация тестового ключа без авторизации (1 ключ на 1 IP)
+router.post('/trial-key/anonymous', async (req, res) => {
+  try {
+    // Получаем IP пользователя
+    const ip = req.headers['x-forwarded-for']?.split(',')[0] || req.socket.remoteAddress;
+
+    // Пытаемся получить userId из тела запроса или из авторизации (если есть)
+    let userId = 'anonymous';
+    if (req.body && req.body.userId) {
+      userId = req.body.userId;
+    } else if (req.user && req.user.id) {
+      userId = req.user.id;
+    }
+
+    console.log('[TRIAL_KEY_ANO] --- Запрос на генерацию анонимного пробного ключа ---');
+    console.log('[TRIAL_KEY_ANO] IP пользователя:', ip, 'userId:', userId);
+
+    // Проверяем, есть ли уже активный пробный ключ с этого IP или userId
+    let existingTrialKey = [];
+    if (userId !== 'anonymous') {
+      existingTrialKey = await VpnKey.find({ userId, isActive: 1, plan: 'trial' });
+    } else {
+      existingTrialKey = await VpnKey.find({ ip, isActive: 1, plan: 'trial' });
+    }
+    if (existingTrialKey && existingTrialKey.length > 0) {
+      const now = new Date();
+      const lastKey = existingTrialKey[0];
+      const keyCreatedAt = new Date(lastKey.createdAt || lastKey.created || lastKey.expiresAt || lastKey.expires);
+      const hoursSinceLastTrial = (now - keyCreatedAt) / (1000 * 60 * 60);
+      if (hoursSinceLastTrial < 24) {
+        return res.status(400).json({
+          error: '😊 Вы уже получили тестовый ключ. Количество тестовых ключей ограничено: 1 шт. в 24 часа. Пожалуйста, попробуйте снова позже!'
+        });
+      }
+    }
+
+    // Создаем новый пробный ключ
+    const uuid = '62bc8aba-1979-4918-85ca-0e2eea1df559';
+    const expiryDate = new Date(Date.now() + 60 * 60 * 1000); // 1 час
+    const config = generateVlessConfig(uuid);
+    const internal_id = crypto.randomUUID();
+
+    const newKey = await VpnKey.create({
+      internal_id,
+      uuid,
+      userId,
+      plan: 'trial',
+      expiresAt: expiryDate,
+      isActive: 1,
+      ip,
+      config
+    });
+
+    // Генерируем QR-код
+    const qrCode = await generateQRCode(config);
+
+    // Устанавливаем таймер деактивации
+    await VpnKey.scheduleDeactivation(uuid, expiryDate);
+    console.log('[VpnKey] Установлен таймер деактивации для ключа', uuid, 'через', 3600, 'секунд');
+
+    res.json({
+      message: 'Пробный ключ успешно создан',
+      key: {
+        uuid,
+        config,
+        expires: expiryDate,
+        qrCode
+      }
+    });
+
+  } catch (error) {
+    console.error('[TRIAL_KEY_ANO] Ошибка:', error);
+    res.status(500).json({ error: 'Внутренняя ошибка сервера' });
+  }
+});
+
+// Функция для генерации конфигурации VLESS
+function generateVlessConfig(uuid) {
+  const host = '167.99.215.131';
+  const port = '4843';
+  const encryption = 'none';
+  const security = 'tls';
+  const type = 'ws';
+  const path = '/vless';
+  const flow = 'none';
+  const alpn = 'h2,h3,http/1.1';
+  const sni = host;
+  const fp = 'chrome';
+  const pbk = '';  // публичный ключ, если используется
+  const sid = '';  // идентификатор потока, если используется
+  const spx = '/';  // путь к сервису, если используется
+  const configName = 'KittyPoopVPN_Standard';
+
+  // Базовые параметры
+  let config = `vless://${uuid}@${host}:${port}?` +
+    `encryption=${encryption}&` +
+    `security=${security}&` +
+    `type=${type}&` +
+    `host=${host}&` +
+    `path=${encodeURIComponent(path)}&` +
+    `flow=${flow}&` +
+    `alpn=${encodeURIComponent(alpn)}`;
+
+  // Добавляем параметры для улучшения работы через мобильную сеть
+  config += `&fp=${fp}`;
+  config += `&sni=${host}`;
+  
+  // Добавляем опциональные параметры, если они заданы
+  if (pbk) config += `&pbk=${pbk}`;
+  if (sid) config += `&sid=${sid}`;
+  if (spx) config += `&spx=${encodeURIComponent(spx)}`;
+  
+  // Добавляем имя конфигурации
+  config += `#${encodeURIComponent(configName)}`;
+
+  return config;
+}
+
+// API для генерации QR-кода для конфигурации
+router.get('/qr-code/:uuid', async (req, res) => {
+  try {
+    const { uuid } = req.params;
+    
+    // Ищем ключ в базе данных
+    const vpnKey = await VpnKey.findOne({ uuid });
+    if (!vpnKey) {
+      return res.status(404).json({ 
+        success: false, 
+        message: '🔑 Ключ не найден. Возможно, он был удалён или срок действия истёк.' 
+      });
+    }
+
+    // Генерируем QR-код
+    const qrCode = await generateQRCode(vpnKey.config);
+    if (!qrCode) {
+      return res.status(500).json({
+        success: false,
+        message: 'Ошибка при генерации QR-кода'
+      });
+    }
+
+    res.json({
+      success: true,
+      qrCode
+    });
+  } catch (error) {
+    console.error('Ошибка при генерации QR-кода:', error);
+    res.status(500).json({
+      success: false,
+      message: 'Внутренняя ошибка сервера'
+    });
+  }
+});
+
+// Экспортируем router в качестве основного объекта для Express
+const routerExport = router;
 
 module.exports = router; 

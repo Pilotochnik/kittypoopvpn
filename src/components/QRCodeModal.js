@@ -44,22 +44,24 @@ const QRCodeContainer = styled.div`
   display: inline-block;
   margin-bottom: 20px;
   position: relative;
-  
-  &::after {
-    content: '';
-    position: absolute;
-    top: 50%;
-    left: 50%;
-    transform: translate(-50%, -50%);
-    width: 60px;
-    height: 60px;
-    background-image: url('https://telegram.org/img/t_logo.png');
-    background-size: contain;
-    background-repeat: no-repeat;
-    background-position: center;
-    opacity: 0.15;
-    pointer-events: none;
-  }
+`;
+
+const Button = styled(motion.button)`
+  background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
+  color: white;
+  border: none;
+  padding: 12px 24px;
+  border-radius: 8px;
+  font-size: 16px;
+  cursor: pointer;
+  margin-top: 20px;
+  width: 100%;
+`;
+
+const TimerContainer = styled.div`
+  font-size: 18px;
+  color: var(--text-secondary);
+  margin-bottom: 15px;
 `;
 
 const Description = styled.p`
@@ -69,49 +71,7 @@ const Description = styled.p`
   line-height: 1.5;
 `;
 
-const Button = styled(motion.button)`
-  padding: 12px 24px;
-  background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
-  border: none;
-  border-radius: 8px;
-  color: white;
-  font-weight: 600;
-  font-size: 16px;
-  cursor: pointer;
-  margin-top: 10px;
-  
-  &:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 8px 20px rgba(140, 82, 255, 0.3);
-  }
-`;
-
-const TimerContainer = styled.div`
-  position: absolute;
-  top: 15px;
-  right: 15px;
-  background: rgba(0, 0, 0, 0.2);
-  padding: 5px 10px;
-  border-radius: 20px;
-  font-size: 14px;
-  color: var(--text-secondary);
-`;
-
-const RefreshButton = styled(motion.button)`
-  background: none;
-  border: none;
-  color: var(--accent-color);
-  font-size: 14px;
-  margin-left: 10px;
-  cursor: pointer;
-  
-  &:hover {
-    color: var(--primary-color);
-    text-decoration: underline;
-  }
-`;
-
-const QRCodeModal = ({ isOpen, onClose, qrValue, title, description, onRefresh }) => {
+const QRCodeModal = ({ isOpen, onClose, qrValue, title, description }) => {
   const [timeLeft, setTimeLeft] = useState(300); // 5 минут в секундах
   
   // Форматирование времени в минуты:секунды
@@ -141,23 +101,19 @@ const QRCodeModal = ({ isOpen, onClose, qrValue, title, description, onRefresh }
       setTimeLeft(300); // Сброс таймера при закрытии
     };
   }, [isOpen, onClose]);
-  
-  // Обновление QR-кода
-  const handleRefresh = () => {
-    setTimeLeft(300); // Сброс таймера
-    if (onRefresh) onRefresh();
-  };
 
   if (!isOpen) return null;
 
   return (
     <ModalOverlay
+      data-testid="modal-overlay"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       exit={{ opacity: 0 }}
       onClick={onClose}
     >
       <ModalContainer
+        data-testid="modal-content"
         onClick={(e) => e.stopPropagation()}
         initial={{ scale: 0.9, opacity: 0 }}
         animate={{ scale: 1, opacity: 1 }}
@@ -168,19 +124,18 @@ const QRCodeModal = ({ isOpen, onClose, qrValue, title, description, onRefresh }
         
         <TimerContainer>
           {formatTime(timeLeft)}
-          <RefreshButton onClick={handleRefresh}>Обновить</RefreshButton>
         </TimerContainer>
         
-        <Description>{description || 'Отсканируйте QR-код для продолжения'}</Description>
+        <Description>{description || 'Отсканируйте QR-код для подключения'}</Description>
         
         <QRCodeContainer>
-          <QRCodeSVG 
-            value={qrValue || 'https://telegram.org/'}
+          <QRCodeSVG
+            value={qrValue}
             size={220}
+            level="H"
+            includeMargin={true}
             bgColor="#ffffff"
             fgColor="#000000"
-            level="L"
-            includeMargin={false}
           />
         </QRCodeContainer>
         

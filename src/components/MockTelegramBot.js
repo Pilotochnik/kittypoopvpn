@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import styled from 'styled-components';
 import { motion } from 'framer-motion';
-import { extractAuthToken, formatTelegramUserData, handleQRAuthCallback } from '../utils/telegramUtils';
 
 const BotContainer = styled(motion.div)`
   position: fixed;
@@ -180,17 +179,6 @@ const MockTelegramBot = () => {
   ]);
   const [processingAuth, setProcessingAuth] = useState(false);
   
-  // Эмуляция пользователя Telegram
-  const mockUser = {
-    id: 12345678,
-    first_name: 'Тестовый',
-    last_name: 'Пользователь',
-    username: 'test_user',
-    photo_url: 'https://telegram.org/img/t_logo.png',
-    auth_date: Math.floor(Date.now() / 1000),
-    hash: 'mock_hash_for_testing_purposes_only_123456789abcdef'
-  };
-  
   // Обработка входящих сообщений
   const handleSendMessage = () => {
     if (!input.trim()) return;
@@ -261,31 +249,6 @@ const MockTelegramBot = () => {
       const botResponse = { 
         id: Date.now(), 
         text: 'Извините, я не понимаю эту команду. Попробуйте отсканировать QR-код для авторизации.', 
-        isUser: false 
-      };
-      setMessages(prev => [...prev, botResponse]);
-    }
-  };
-  
-  // Функция для эмуляции авторизации при нажатии кнопки
-  const handleSimulateAuth = () => {
-    // Получаем сохраненный токен из localStorage
-    const authToken = localStorage.getItem('telegram_auth_token');
-    
-    if (authToken) {
-      // Формируем команду авторизации
-      const authCommand = `/start auth_${authToken}`;
-      setInput(authCommand);
-      
-      // Автоматически отправляем сообщение через небольшую задержку
-      setTimeout(() => {
-        handleSendMessage();
-      }, 100);
-    } else {
-      // Если нет активного токена
-      const botResponse = { 
-        id: Date.now(), 
-        text: 'Нет активного QR-кода для авторизации. Откройте QR-код в приложении и попробуйте снова.', 
         isUser: false 
       };
       setMessages(prev => [...prev, botResponse]);

@@ -1,112 +1,174 @@
 // Модель Payment для работы с SQLite
 const { getDB } = require('../db');
+const { logger } = require('../utils/logger');
 
 // Класс Payment для работы с таблицей payments
-class Payment {
+class PaymentService {
   // Поиск платежа по ID
   static async findById(id) {
-    const db = getDB();
-    return await db.get('SELECT * FROM payments WHERE id = ?', id);
+    try {
+      const db = getDB();
+      const payment = await db.get('SELECT * FROM payments WHERE id = ?', id);
+      return payment;
+    } catch (error) {
+      logger.error('Ошибка при поиске платежа:', error);
+      throw error;
+    }
   }
   
   // Поиск платежа по платежному ID
   static async findByPaymentId(paymentId) {
-    const db = getDB();
-    return await db.get('SELECT * FROM payments WHERE paymentId = ?', paymentId);
+    try {
+      const db = getDB();
+      const payment = await db.get('SELECT * FROM payments WHERE paymentId = ?', paymentId);
+      return payment;
+    } catch (error) {
+      logger.error('Ошибка при поиске платежа по paymentId:', error);
+      throw error;
+    }
   }
   
   // Поиск платежей по условию
-  static async find(condition = {}) {
-    const db = getDB();
-    let query = 'SELECT * FROM payments';
-    const params = [];
-    
-    // Если есть условия, добавляем их в запрос
-    if (Object.keys(condition).length > 0) {
-      query += ' WHERE ';
-      const conditions = [];
-      
-      for (const [key, value] of Object.entries(condition)) {
-        conditions.push(`${key} = ?`);
-        params.push(value);
+  static async find(conditions = {}) {
+    try {
+      const db = getDB();
+      let query = 'SELECT * FROM payments';
+      const values = [];
+
+      if (Object.keys(conditions).length > 0) {
+        const where = Object.keys(conditions)
+          .map(key => `${key} = ?`)
+          .join(' AND ');
+        values.push(...Object.values(conditions));
+        query += ` WHERE ${where}`;
       }
-      
-      query += conditions.join(' AND ');
+
+      query += ' ORDER BY createdAt DESC';
+      return await db.all(query, values);
+    } catch (error) {
+      logger.error('Ошибка при поиске платежей:', error);
+      throw error;
     }
-    
-    // По умолчанию сортируем по дате создания (новые в начале)
-    query += ' ORDER BY createdAt DESC';
-    
-    return await db.all(query, params);
   }
   
   // Поиск одного платежа по условию
-  static async findOne(condition = {}) {
-    const db = getDB();
-    let query = 'SELECT * FROM payments';
-    const params = [];
-    
-    // Если есть условия, добавляем их в запрос
-    if (Object.keys(condition).length > 0) {
-      query += ' WHERE ';
-      const conditions = [];
-      
-      for (const [key, value] of Object.entries(condition)) {
-        conditions.push(`${key} = ?`);
-        params.push(value);
+  static async findOne(query) {
+    try {
+      const payments = await this.find(query);
+      const payment = payments[0] || null;
+      if (payment) {
+        payment.toJSON = function() {
+          return {
+            ...this,
+            createdAt: new Date(this.createdAt).toISOString(),
+            completedAt: this.completedAt ? new Date(this.completedAt).toISOString() : null,
+            expiryTime: new Date(this.expiryTime).toISOString()
+          };
+        };
       }
-      
-      query += conditions.join(' AND ');
+      return payment;
+    } catch (error) {
+      logger.error('Ошибка при поиске платежа:', error);
+      throw error;
     }
-    
-    query += ' LIMIT 1';
-    
-    return await db.get(query, params);
   }
   
   // Создание нового платежа
   static async create(paymentData) {
-    const db = getDB();
-    
-    // Формируем SQL запрос для вставки данных
-    const keys = Object.keys(paymentData);
-    const placeholders = keys.map(() => '?').join(', ');
-    const values = Object.values(paymentData);
-    
-    const result = await db.run(
-      `INSERT INTO payments (${keys.join(', ')}) VALUES (${placeholders})`,
-      values
-    );
-    
-    // Если платеж был успешно создан, возвращаем его данные
-    if (result && result.lastID) {
-      return await this.findById(result.lastID);
+    try {
+      const db = getDB();
+      const fields = Object.keys(paymentData).join(', ');
+      const placeholders = Object.keys(paymentData).map(() => '?').join(', ');
+      const values = Object.values(paymentData);
+
+      const result = await db.run(
+        `INSERT INTO payments (${fields}) VALUES (${placeholders})`,
+        values
+      );
+
+      return this.findById(result.lastID);
+    } catch (error) {
+      logger.error('Ошибка при создании платежа:', error);
+      throw error;
     }
-    
-    return null;
   }
   
   // Обновление платежа
-  static async update(paymentId, paymentData) {
-    const db = getDB();
-    
-    // Формируем SQL запрос для обновления данных
-    const keys = Object.keys(paymentData);
-    const updates = keys.map(key => `${key} = ?`).join(', ');
-    const values = [...Object.values(paymentData), paymentId];
-    
-    const result = await db.run(
-      `UPDATE payments SET ${updates} WHERE paymentId = ?`,
-      values
-    );
-    
-    // Если платеж был успешно обновлен, возвращаем его данные
-    if (result && result.changes > 0) {
-      return await this.findByPaymentId(paymentId);
+  static async update(paymentId, updateData) {
+    try {
+      const db = getDB();
+      const fields = Object.keys(updateData)
+        .map(key => `${key} = ?`)
+        .join(', ');
+      const values = [...Object.values(updateData), paymentId];
+
+      await db.run(
+        `UPDATE payments SET ${fields} WHERE paymentId = ?`,
+        values
+      );
+
+      return this.findByPaymentId(paymentId);
+    } catch (error) {
+      logger.error('Ошибка при обновлении платежа:', error);
+      throw error;
     }
-    
-    return null;
+  }
+
+  // Создание таблицы payments
+  static async createTable() {
+    const db = getDB();
+    const query = `
+      CREATE TABLE IF NOT EXISTS payments (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        paymentId TEXT UNIQUE NOT NULL,
+        userId TEXT NOT NULL,
+        status TEXT NOT NULL,
+        amount REAL NOT NULL,
+        currency TEXT NOT NULL,
+        cryptoAmount REAL,
+        cryptoAddress TEXT,
+        plan TEXT NOT NULL,
+        period INTEGER NOT NULL,
+        createdAt DATETIME DEFAULT CURRENT_TIMESTAMP,
+        completedAt DATETIME,
+        expiryTime DATETIME NOT NULL,
+        vpnKeyUuid TEXT
+      )
+    `;
+    await db.run(query);
+  }
+
+  // Пересоздание таблицы payments
+  static async recreateTable() {
+    const db = await getDB();
+    try {
+      // Удаляем существующую таблицу
+      await db.run('DROP TABLE IF EXISTS payments');
+      console.log('[Payment] Существующая таблица payments удалена');
+      
+      // Создаем таблицу заново
+      await this.createTable();
+      console.log('[Payment] Таблица payments успешно пересоздана');
+    } catch (error) {
+      console.error('[Payment] Ошибка при пересоздании таблицы:', error);
+      throw error;
+    }
+  }
+
+  // Удаление платежа
+  static async delete(paymentId) {
+    try {
+      const db = getDB();
+      await db.run('DELETE FROM payments WHERE paymentId = ?', paymentId);
+    } catch (error) {
+      logger.error('Ошибка при удалении платежа:', error);
+      throw error;
+    }
+  }
+
+  static _toSnakeCase(str) {
+    return str.replace(/[A-Z]/g, letter => `_${letter.toLowerCase()}`);
   }
 }
 
-module.exports = Payment; 
+module.exports = PaymentService; 
