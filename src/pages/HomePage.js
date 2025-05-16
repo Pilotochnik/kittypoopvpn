@@ -13,17 +13,25 @@ const PageContainer = styled.div`
 `;
 
 const HeroSection = styled.section`
+  width: 100vw;
+  left: 50%;
+  right: 50%;
+  margin-left: -50vw;
+  margin-right: -50vw;
+  position: relative;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   text-align: center;
-  padding: 0 12px 10px;
+  padding: 0 12px 0;
   background: radial-gradient(circle at center, #1a1a2e 0%, #0f0f14 80%);
-  position: relative;
   overflow: hidden;
+  min-height: 220px;
+  z-index: 1;
   @media (max-width: 600px) {
-    padding: 0 2px 4px;
+    padding: 0 2px 0;
+    min-height: 120px;
   }
 
   & > .floating-emoji {

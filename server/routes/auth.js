@@ -12,7 +12,16 @@ const router = express.Router();
 
 // CORS middleware для поддержки нескольких origin
 router.use((req, res, next) => {
-  const allowedOrigins = ['http://localhost:3000', 'http://localhost:3001'];
+  const allowedOrigins = [
+    'http://localhost:3000',
+    'http://localhost:3001',
+    'http://kittypoopvpn.ru:3000',
+    'https://kittypoopvpn.ru',
+    'https://www.kittypoopvpn.ru',
+    'http://kittypoopvpn.ru',
+    'http://www.kittypoopvpn.ru',
+    'https://api.kittypoopvpn.ru'
+  ];
   const origin = req.headers.origin;
   if (allowedOrigins.includes(origin)) {
     res.setHeader('Access-Control-Allow-Origin', origin);
@@ -144,12 +153,16 @@ router.get('/me', authMiddleware, async (req, res) => {
       console.log('Пользователь не найден по id:', req.user.id);
       return res.status(404).json({ error: 'Пользователь не найден' });
     }
+    const adminEnv = String(process.env.ADMIN_TELEGRAM_CHAT_ID || '434532312');
+    const userTgId = String(user.telegramId);
+    const isAdmin = userTgId === adminEnv;
     return res.json({
       id: user.id,
       firstName: user.firstName,
       lastName: user.lastName,
       username: user.username,
-      telegramId: user.telegramId
+      telegramId: user.telegramId,
+      isAdmin: isAdmin
     });
   } catch (e) {
     return res.status(500).json({ error: 'Ошибка получения профиля' });

@@ -3,7 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { logAuthDebug } from '../utils/authDebugLogger';
 import { toast } from 'react-toastify';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 const TelegramLoginButton = () => {
   const [loading, setLoading] = useState(false);
@@ -72,6 +72,10 @@ const TelegramLoginButton = () => {
           };
           console.log('[TelegramLoginButton] localStorage после записи:', storageSnapshot);
           logAuthDebug('localStorage после записи (polling)', storageSnapshot);
+
+          if (data.user && data.user.isAdmin && data.user.telegramId) {
+            localStorage.setItem('admin_telegram_id', data.user.telegramId);
+          }
 
           clearInterval(checkIntervalRef.current);
           setPolling(false);

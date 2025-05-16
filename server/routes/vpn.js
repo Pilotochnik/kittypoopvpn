@@ -410,6 +410,93 @@ router.get('/qr-code/:uuid', async (req, res) => {
   }
 });
 
+// Middleware для проверки админа по Telegram ID
+const ADMIN_TELEGRAM_ID = process.env.ADMIN_TELEGRAM_CHAT_ID || '434532312';
+function adminOnly(req, res, next) {
+  const userId = req.user?.telegramId || req.user?.id || req.headers['x-admin-telegram-id'];
+  console.log('[adminOnly] userId:', userId, '| ADMIN_TELEGRAM_ID:', ADMIN_TELEGRAM_ID, '| req.user:', req.user, '| headers:', req.headers);
+  if (userId && userId.toString() === ADMIN_TELEGRAM_ID) {
+    return next();
+  }
+  console.warn('[adminOnly] Доступ запрещён. userId:', userId, '| ADMIN_TELEGRAM_ID:', ADMIN_TELEGRAM_ID);
+  return res.status(403).json({ success: false, message: 'Доступ запрещён' });
+}
+
+// Получить все ключи (админ)
+router.get('/all-keys', adminOnly, async (req, res) => {
+  try {
+    console.log('[all-keys] Запрос от:', req.user, '| headers:', req.headers);
+    const vpnKeys = await VpnKey.find({});
+    return res.json({ success: true, keys: vpnKeys });
+  } catch (error) {
+    console.error('[all-keys] Ошибка получения всех ключей:', error);
+    return res.status(500).json({ success: false, message: 'Ошибка получения всех ключей', error: error?.message });
+  }
+});
+
+// Активировать ключ
+router.post('/key/:uuid/activate', adminOnly, async (req, res) => {
+  try {
+    const key = await VpnKey.findByUuid(req.params.uuid);
+    if (!key) return res.status(404).json({ success: false, message: 'Ключ не найден' });
+    const updatedKey = await VpnKey.update(req.params.uuid, { isActive: 1 });
+    return res.json({ success: true, key: updatedKey });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Ошибка активации ключа' });
+  }
+});
+
+// Деактивировать ключ
+router.post('/key/:uuid/deactivate', adminOnly, async (req, res) => {
+  try {
+    const key = await VpnKey.findByUuid(req.params.uuid);
+    if (!key) return res.status(404).json({ success: false, message: 'Ключ не найден' });
+    const updatedKey = await VpnKey.update(req.params.uuid, { isActive: 0 });
+    return res.json({ success: true, key: updatedKey });
+  } catch (error) {
+    console.error('[deactivate] Ошибка:', error);
+    return res.status(500).json({ success: false, message: 'Ошибка деактивации ключа', error: error?.message });
+  }
+});
+
+// Удалить ключ
+router.delete('/key/:uuid/delete', adminOnly, async (req, res) => {
+  try {
+    const key = await VpnKey.findByUuid(req.params.uuid);
+    if (!key) return res.status(404).json({ success: false, message: 'Ключ не найден' });
+    await key.delete();
+    return res.json({ success: true });
+  } catch (error) {
+    return res.status(500).json({ success: false, message: 'Ошибка удаления ключа' });
+  }
+});
+
+// Экспорт всех ключей в CSV
+router.get('/export', adminOnly, async (req, res) => {
+  try {
+    const vpnKeys = await VpnKey.find({});
+    const fields = ['uuid','userId','plan','period','createdAt','expiresAt','isActive','isTrial','config'];
+    const csv = [fields.join(',')].concat(vpnKeys.map(k => fields.map(f => JSON.stringify(k[f] || '')).join(','))).join('\n');
+    res.setHeader('Content-Type', 'text/csv');
+    res.setHeader('Content-Disposition', 'attachment; filename="vpn_keys.csv"');
+    res.send(csv);
+  } catch (error) {
+    res.status(500).send('Ошибка экспорта');
+  }
+});
+
+// Экспорт всех ключей в JSON
+router.get('/export-json', adminOnly, async (req, res) => {
+  try {
+    const vpnKeys = await VpnKey.find({});
+    res.setHeader('Content-Type', 'application/json');
+    res.setHeader('Content-Disposition', 'attachment; filename="vpn_keys.json"');
+    res.json(vpnKeys);
+  } catch (error) {
+    res.status(500).send('Ошибка экспорта');
+  }
+});
+
 // Экспортируем router в качестве основного объекта для Express
 const routerExport = router;
 

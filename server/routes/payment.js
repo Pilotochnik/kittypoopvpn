@@ -68,28 +68,28 @@ router.post('/create', async (req, res) => {
         });
         // Сохраняем платёж в базе
         const paymentId = generatePaymentId();
-        const expiryTime = new Date(Date.now() + 30 * 60 * 1000);
+    const expiryTime = new Date(Date.now() + 30 * 60 * 1000);
         const periodInDays = period === 'monthly' ? 30 : period === 'quarterly' ? 90 : period === 'yearly' ? 365 : 30;
-        const payment = await PaymentService.create({
-          paymentId,
-          userId: user ? user.id : userId,
-          status: 'pending',
-          amount: rubAmount,
-          currency,
-          plan,
-          period: periodInDays,
+    const payment = await PaymentService.create({
+      paymentId,
+      userId: user ? user.id : userId,
+      status: 'pending',
+      amount: rubAmount,
+      currency,
+      plan,
+      period: periodInDays,
           expiryTime,
           cryptopayInvoiceId: invoice.invoice_id,
           cryptopayPayUrl: invoice.pay_url
-        });
+    });
         logger.info('Создан новый платёж через CryptoPay', { paymentId, invoice });
         return res.json({
           success: true,
           payment: {
-            paymentId,
-            amount: rubAmount,
-            currency,
-            plan,
+      paymentId, 
+      amount: rubAmount,
+      currency,
+      plan, 
             period,
             status: 'pending',
             expiryTime,

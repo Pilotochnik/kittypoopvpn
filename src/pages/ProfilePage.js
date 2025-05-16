@@ -3,6 +3,7 @@ import styled from 'styled-components';
 import { motion } from 'framer-motion';
 import UserProfile from '../auth/components/UserProfile';
 import { useAuth } from '../context/AuthContext';
+import { useNavigate } from 'react-router-dom';
 
 const PageContainer = styled.div`
   display: flex;
@@ -65,7 +66,8 @@ const LoadingContainer = styled.div`
 `;
 
 const ProfilePage = () => {
-  const { loading } = useAuth();
+  const { loading, user } = useAuth();
+  const navigate = useNavigate();
   
   // Показываем индикатор загрузки, пока загружаются данные профиля
   if (loading) {
@@ -99,7 +101,25 @@ const ProfilePage = () => {
           <h1>Ваш профиль</h1>
           <p>Управление аккаунтом и настройками</p>
         </Header>
-        
+        {user && user.isAdmin && (
+          <button
+            style={{
+              background: '#229ED9',
+              color: '#fff',
+              border: 'none',
+              borderRadius: '8px',
+              padding: '12px 24px',
+              fontSize: '1.1rem',
+              fontWeight: 600,
+              marginBottom: '18px',
+              cursor: 'pointer',
+              boxShadow: '0 2px 8px rgba(34,158,217,0.12)'
+            }}
+            onClick={() => navigate('/admin/keys')}
+          >
+            Управление ключами (админ)
+          </button>
+        )}
         <motion.div
           initial={{ opacity: 0, y: 20 }}
           animate={{ opacity: 1, y: 0 }}

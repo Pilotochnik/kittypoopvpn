@@ -176,13 +176,7 @@ const LoginPage = () => {
             <span style={{color: '#1a2a3a'}}>Вам не нужно повторно входить в аккаунт — просто напишите нашему боту 😺 и следуйте инструкции.<br/>Ваши данные защищены, мы не получаем доступ к переписке <span role="img" aria-label="замок">🔐</span></span>
           </div>
         </InfoBox>
-        <TelegramButton
-          whileHover={{ scale: 1.04 }}
-          whileTap={{ scale: 0.98 }}
-          onClick={() => window.open('https://t.me/KittyPoopVPNBot', '_blank')}
-        >
-          <span style={{fontSize:'1.5em'}}>✈️</span> Войти через Telegram
-        </TelegramButton>
+        <TelegramLoginButton />
       </FormContainer>
     </PageContainer>
   );

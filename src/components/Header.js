@@ -83,12 +83,14 @@ const Header = ({ toggleSidebar = () => {} }) => {
         <NavLink 
           to="/pricing" 
           className={location.pathname === '/pricing' ? 'active' : ''}
+          data-testid="nav-tariffs"
         >
           Тарифы
         </NavLink>
         <NavLink 
           to="/about" 
           className={location.pathname === '/about' ? 'active' : ''}
+          data-testid="nav-about"
         >
           О нас
         </NavLink>
@@ -98,12 +100,14 @@ const Header = ({ toggleSidebar = () => {} }) => {
             <NavLink 
               to="/profile" 
               className={location.pathname === '/profile' ? 'active' : ''}
+              data-testid="nav-profile"
             >
               Профиль
             </NavLink>
             <NavLink 
               to="/faq" 
               className={location.pathname === '/faq' ? 'active' : ''}
+              data-testid="nav-faq"
             >
               FAQ по настройке
             </NavLink>
@@ -122,6 +126,7 @@ const Header = ({ toggleSidebar = () => {} }) => {
             <NavLink 
               to="/faq" 
               className={location.pathname === '/faq' ? 'active' : ''}
+              data-testid="nav-faq"
             >
               FAQ по настройке
             </NavLink>

@@ -5,11 +5,11 @@ import { Link } from 'react-router-dom';
 
 const PageContainer = styled.div`
   min-height: 100vh;
-  padding-top: 100px;
-  padding-bottom: 50px;
+  padding-top: 8px;
+  padding-bottom: 0;
   @media (max-width: 600px) {
-    padding-top: 56px;
-    padding-bottom: 18px;
+    padding-top: 4px;
+    padding-bottom: 0;
   }
 `;
 
@@ -24,12 +24,12 @@ const Content = styled.div`
 
 const HeaderSection = styled.div`
   text-align: center;
-  margin-bottom: 60px;
+  margin-bottom: 0;
 `;
 
 const Title = styled.h1`
   font-size: 3rem;
-  margin-bottom: 20px;
+  margin-bottom: 14px;
   background: linear-gradient(90deg, var(--primary-color), var(--secondary-color));
   -webkit-background-clip: text;
   -webkit-text-fill-color: transparent;
@@ -39,7 +39,7 @@ const Description = styled.p`
   font-size: 1.2rem;
   color: var(--text-secondary);
   max-width: 700px;
-  margin: 0 auto 40px;
+  margin: 0 auto 18px;
 `;
 
 const PricingGrid = styled.div`
@@ -255,8 +255,8 @@ const FAQAnswer = styled(motion.div)`
 const TrialNote = styled.div`
   background: rgba(51, 204, 255, 0.1);
   border-radius: 12px;
-  padding: 15px 20px;
-  margin-bottom: 40px;
+  padding: 10px 16px;
+  margin-bottom: 18px;
   display: flex;
   align-items: center;
   border: 1px solid rgba(51, 204, 255, 0.3);

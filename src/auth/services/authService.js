@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-const API_URL = process.env.REACT_APP_API_URL || 'http://localhost:5000/api';
+const API_URL = process.env.REACT_APP_API_URL || '/api';
 
 // Класс для работы с API аутентификации
 class AuthService {
@@ -14,8 +14,7 @@ class AuthService {
     baseURL: `${API_URL}/auth`,
     withCredentials: true,
     headers: {
-      'Content-Type': 'application/json',
-      'Access-Control-Allow-Origin': 'http://localhost:3000'
+      'Content-Type': 'application/json'
     }
   });
   

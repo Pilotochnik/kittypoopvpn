@@ -1,0 +1,87 @@
+body {
+  margin: 0;
+  padding: 0;
+  font-family: 'Inter', Arial, sans-serif;
+  background: #10182a;
+  color: #1a2a36;
+  min-height: 100vh;
+}
+
+.container {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 32px 16px;
+  background: transparent;
+}
+
+h1, h2, h3 {
+  color: #229ED9;
+  font-weight: 800;
+  margin-bottom: 18px;
+}
+
+button, .btn {
+  background: #229ED9;
+  color: #fff;
+  border: none;
+  border-radius: 8px;
+  padding: 10px 18px;
+  font-size: 1.1rem;
+  font-weight: 700;
+  cursor: pointer;
+  margin: 4px 0;
+  transition: background 0.15s;
+}
+button:hover, .btn:hover {
+  background: #60cfff;
+}
+
+.table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #f8fbff;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 4px 24px 0 rgba(34, 158, 217, 0.10), 0 2px 8px rgba(0,0,0,0.07);
+  margin-bottom: 18px;
+}
+.table th, .table td {
+  padding: 12px 8px;
+  border-bottom: 1px solid #e3f0ff;
+  text-align: left;
+}
+.table th {
+  background: #d0e6fa;
+  color: #1a2a36;
+  font-weight: 800;
+}
+.table tr:nth-child(even) td {
+  background: #f0f6fa;
+}
+
+@media (max-width: 900px) {
+  .container {
+    max-width: 100%;
+    padding: 16px 4px;
+  }
+}
+
+@media (max-width: 600px) {
+  .container {
+    padding: 8px 2px;
+  }
+  h1, h2, h3 {
+    font-size: 1.1rem;
+    margin-bottom: 10px;
+  }
+  .table {
+    font-size: 0.92rem;
+    min-width: 600px;
+    overflow-x: auto;
+  }
+  button, .btn {
+    font-size: 1rem;
+    padding: 9px 10px;
+    border-radius: 7px;
+  }
+} 

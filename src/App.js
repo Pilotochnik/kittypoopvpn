@@ -19,6 +19,7 @@ import PaymentPage from './pages/PaymentPage';
 import AuthSuccessPage from './pages/AuthSuccessPage';
 import AboutPage from './pages/AboutPage';
 import FAQPage from './pages/FAQPage';
+import AdminKeysPage from './pages/AdminKeysPage';
 
 // Компоненты
 import Sidebar from './components/Sidebar';
@@ -27,6 +28,7 @@ import ProtectedRoute from './auth/components/ProtectedRoute';
 import FloatingElements from './components/FloatingElements';
 
 import './App.css';
+import './styles/global.css';
 
 const App = () => {
   const [sidebarOpen, setSidebarOpen] = useState(false);
@@ -89,6 +91,14 @@ const App = () => {
                     ? <AdminPage /> 
                     : <Navigate to="/" replace />
                 } 
+              />
+              <Route
+                path="/admin/keys"
+                element={
+                  user && user.isAdmin
+                    ? <AdminKeysPage />
+                    : <Navigate to="/" replace />
+                }
               />
             </Route>
             

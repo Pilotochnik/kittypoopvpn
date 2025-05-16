@@ -44,6 +44,16 @@ app.use(express.json());
 app.use(httpLogger);
 app.use(monitoringMiddleware);
 
+// Отключаем кэширование для всех API-ответов
+app.use((req, res, next) => {
+  if (req.url.startsWith('/api/')) {
+    res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+    res.set('Pragma', 'no-cache');
+    res.set('Expires', '0');
+  }
+  next();
+});
+
 // Подключаем маршруты
 app.use('/api/auth', authRoutes);
 app.use('/api/payment', paymentRoutes);
@@ -63,8 +73,8 @@ async function initializeDatabase() {
     
     // Пересоздаем таблицы
     await User.createTable();
-    await VpnKey.recreateTable();
-    await Payment.recreateTable();
+    await VpnKey.createTable();
+    await Payment.createTable();
     
     // Даем небольшую паузу для гарантии создания таблиц
     await new Promise(resolve => setTimeout(resolve, 100));

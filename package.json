@@ -88,6 +88,7 @@
     "testEnvironment": "jsdom"
   },
   "devDependencies": {
+    "@playwright/test": "^1.52.0",
     "chai": "^5.2.0",
     "identity-obj-proxy": "^3.0.0",
     "mocha": "^11.2.2",

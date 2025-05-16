@@ -357,40 +357,21 @@ async function rejectPayment(chatId, paymentId) {
   return bot.sendMessage(chatId, `Платеж ${paymentId} отклонен.`);
 }
 
-// Добавляем поддержку Telegram Web App
+// Новый обработчик /start с кнопкой "Личный кабинет"
 if (bot) {
-  // Добавление кнопки меню для запуска веб-приложения
   bot.setMyCommands([
-    { command: '/start', description: 'Начать работу с ботом' },
-    { command: '/webapp', description: 'Открыть веб-приложение' }
+    { command: '/start', description: 'Начать работу с ботом' }
   ]);
 
-  // Обработка команды для открытия веб-приложения
-  bot.onText(/\/webapp/, (msg) => {
-    const chatId = msg.chat.id;
-    const webAppUrl = process.env.WEBAPP_URL || 'https://kittypoop.vpn';
-    
-    bot.sendMessage(chatId, 'Откройте наше веб-приложение:', {
-      reply_markup: {
-        inline_keyboard: [
-          [{ text: 'Открыть KittyPoop VPN', web_app: { url: webAppUrl } }]
-        ]
-      }
-    });
-  });
-
-  // Добавляем кнопку для веб-приложения в основную клавиатуру
   bot.onText(/\/start$/, (msg) => {
     const chatId = msg.chat.id;
-    const webAppUrl = process.env.WEBAPP_URL || 'https://kittypoop.vpn';
-    
+    const cabinetUrl = 'https://kittypoopvpn.ru/profile';
     bot.sendMessage(chatId, 'Добро пожаловать в KittyPoopVPN! Выберите опцию:', {
       reply_markup: {
-        keyboard: [
-          [{ text: 'Открыть веб-приложение', web_app: { url: webAppUrl } }],
+        inline_keyboard: [
+          [{ text: 'Личный кабинет', url: cabinetUrl }],
           [{ text: 'Помощь' }]
-        ],
-        resize_keyboard: true
+        ]
       }
     });
   });
